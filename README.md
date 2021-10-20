@@ -37,7 +37,7 @@ python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 --datatype 0 --ncvx 2 --lr
 This runs a model of mode 0 on synthetic data, with `--cv` indicating which cross-validation fold to leave out for validation (-1 indicates using all data) and `--gpu` indicating the GPU device to run on (if available).
 Line 188 in validation.py gives the definition of all modes (numbered 0 to 8), in particular the likelihood (1st element of tuple) and the input space (2d element of tuple) are specified.
 Note there is a 10-fold split of the data, hence the cv trial numbers can go from -1 to 9.
-`lr` and `lr_2` indicate the learning rates, with `lr_2` for kernel and variational standard deviations (lower for latent models as described in the paper).
+`lr` and `lr_2` indicate the learning rates, with `lr_2` for toroidal kernel lengthscales and variational standard deviations of the latent state posterior (lower for latent models as described in the paper).
 The flag `--ncvx` refers to the number of runs to do (selecting the best fit model after completion to save).
 One can also specify `--batchsize`, which can speed up training when larger depending on the memory capacity of the hardware used.
 For validation.py, the flag `--datatype` can be 0 (heteroscedastic Conway-Maxwell-Poisson) or 1 (modulated Poisson).
@@ -56,23 +56,16 @@ All trained models are stored in the ./checkpoint/ folder.
 
 
 ##### Experiments in the paper
-- Synthetic data
+Synthetic data:
+- regression models `python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 1 2 3 --datatype 0 --ncvx 2 --lr 1e-2`
+- latent variable models `python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 4 5 6 7 --datatype 0 --ncvx 3 --lr 1e-2 --lr_2 1e-3`
+- progressively capturing single neuron variability and noise correlations `python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 2 8 --datatype 1 --ncvx 2 --lr 1e-2`
 
-`python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 1 2 3 --datatype 0 --ncvx 2 --lr 1e-2` (regression models)
-
-`python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 4 5 6 7 --datatype 0 --ncvx 3 --lr 1e-2 --lr_2 1e-3` (latent variable models)
-
-`python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 2 8 --datatype 1 --ncvx 2 --lr 1e-2` (capturing noise correlations and single neuron variability)
-
-- Head direction cell data
-
-`python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 0 1 4 --ncvx 2 --lr 1e-2 --binsize 40` ( regression with different likelihoods)
-
-`python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 2 3 --ncvx 2 --lr 1e-2 --binsize 40` (regression with different regressors)
-
-`python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 5 6 7 8 --ncvx 3 --lr 1e-2 --lr_2 1e-3 --binsize 40` (joint latent-observed models)
-
-`python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 9 10 11 --ncvx 3 --lr 3e-2 --lr_2 5e-3 --binsize 100` (latent variable models)
+Head direction cell data:
+- regression with different likelihoods `python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 0 1 4 --ncvx 2 --lr 1e-2 --binsize 40`
+- regression with different regressors `python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 2 3 --ncvx 2 --lr 1e-2 --binsize 40`
+- joint latent-observed models `python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 5 6 7 8 --ncvx 3 --lr 1e-2 --lr_2 1e-3 --binsize 40`
+- latent variable models `python3 HDC.py --cv -1 1 2 3 5 6 8 --gpu 0 --modes 9 10 11 --ncvx 3 --lr 3e-2 --lr_2 5e-3 --binsize 100`
 
 If you wish to run different modes or cross-validation runs grouped together above in parallel, run the command several times with only a single mode or cv trial each time.
 
