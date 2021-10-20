@@ -1,0 +1,13 @@
+__pycache__/
+output/
+data/
+checkpoint/
+.DS_Store
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+.\ /
+docs/_build/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
