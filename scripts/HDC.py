@@ -106,7 +106,7 @@ def main():
 
     nonconvex_trials = parser.ncvx
     modes_tot = [('GP', 'IP', 'hd_w_s_pos_t', 64, 'exp', 1, [], False, 10, False, 'ew'), 
-                 ('GP', 'NBh', 'hd_w_s_pos_t', 64, 'exp', 1, [], False, 10, False, 'ew'), 
+                 ('GP', 'hNB', 'hd_w_s_pos_t', 64, 'exp', 1, [], False, 10, False, 'ew'), 
                  ('GP', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'),  # 3 
                  ('GP', 'U', 'hd_w_s_t', 48, 'identity', 3, [], False, 10, False, 'ew'), 
                  ('GP', 'U', 'hd_w_s_pos_t', 64, 'identity', 3, [], False, 10, False, 'ew'), # 5
@@ -116,7 +116,7 @@ def main():
                  ('GP', 'U', 'hd_w_s_pos_t_R4', 96, 'identity', 3, [6], False, 10, False, 'ew'), 
                  ('GP', 'U', 'T1', 8, 'identity', 3, [0], False, 10, False, 'ew'), # 10
                  ('GP', 'IP', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew'), 
-                 ('GP', 'NBh', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew')]
+                 ('GP', 'hNB', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew')]
 
 
     modes = [modes_tot[m] for m in parser.modes]

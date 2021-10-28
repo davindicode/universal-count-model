@@ -186,11 +186,11 @@ def main():
 
     nonconvex_trials = parser.ncvx
     modes_tot = [('GP', 'IP', 'hd', None, 8, 'exp', 1, [], False, 10, False, 'ew'), # 1
-                 ('GP', 'NBh', 'hd', None, 8, 'exp', 1, [], False, 10, False, 'ew'), 
+                 ('GP', 'hNB', 'hd', None, 8, 'exp', 1, [], False, 10, False, 'ew'), 
                  ('GP', 'U', 'hd', None, 8, 'identity', 3, [], False, 10, False, 'ew'), 
                  ('ANN', 'U', 'hd', None, 8, 'identity', 3, [], False, 10, False, 'ew'), 
                  ('GP', 'IP', 'T1', None, 8, 'exp', 1, [0], False, 10, False, 'ew'), # 5
-                 ('GP', 'NBh', 'T1', None, 8, 'exp', 1, [0], False, 10, False, 'ew'), 
+                 ('GP', 'hNB', 'T1', None, 8, 'exp', 1, [0], False, 10, False, 'ew'), 
                  ('GP', 'U', 'T1', None, 8, 'identity', 3, [0], False, 10, False, 'ew'), 
                  ('ANN', 'U', 'T1', None, 8, 'identity', 3, [0], False, 10, False, 'ew'), 
                  ('GP', 'U', 'hdxR1', None, 16, 'identity', 3, [1], False, 10, False, 'ew')] # 9

@@ -828,11 +828,11 @@ def likelihood_params(ll_mode, mode, behav_tuple, data_type, num_induc, inner_di
         if factorized > 1: # overwrite
             inv_link = 'relu'
             
-    if ll_mode =='ZIPh':
+    if ll_mode =='hZIP':
         inv_link_hetero = 'sigmoid'
-    elif ll_mode =='CMPh':
+    elif ll_mode =='hCMP':
         inv_link_hetero = 'identity'
-    elif ll_mode =='NBh':
+    elif ll_mode =='hNB':
         inv_link_hetero = 'softplus'
     else:
         inv_link_hetero = None
@@ -852,16 +852,16 @@ def likelihood_params(ll_mode, mode, behav_tuple, data_type, num_induc, inner_di
     elif ll_mode == 'IP':
         likelihood = mdl.likelihoods.Poisson(tbin, inner_dims, inv_link)
         
-    elif ll_mode == 'ZIP' or ll_mode =='ZIPh':
+    elif ll_mode == 'ZIP' or ll_mode =='hZIP':
         alpha = .1*np.ones(inner_dims)
         likelihood = mdl.likelihoods.ZI_Poisson(tbin, inner_dims, inv_link, alpha, dispersion_mapping=gp_lvms)
         #inv_link_hetero = lambda x: torch.sigmoid(x)/tbin
         
-    elif ll_mode == 'NB' or ll_mode =='NBh':
+    elif ll_mode == 'NB' or ll_mode =='hNB':
         r_inv = 10.*np.ones(inner_dims)
         likelihood = mdl.likelihoods.Negative_binomial(tbin, inner_dims, inv_link, r_inv, dispersion_mapping=gp_lvms)
         
-    elif ll_mode == 'CMP' or ll_mode =='CMPh':
+    elif ll_mode == 'CMP' or ll_mode =='hCMP':
         log_nu = np.zeros(inner_dims)
         likelihood = mdl.likelihoods.COM_Poisson(tbin, inner_dims, inv_link, log_nu, J=J, dispersion_mapping=gp_lvms)
         
