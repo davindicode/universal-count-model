@@ -4,6 +4,9 @@ __pycache__/
 */.ipynb_checkpoints/*
 .\ /
 docs/_build/
+output/
+saves/
+checkpoint/
 
 # Installer logs
 pip-log.txt

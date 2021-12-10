@@ -14,11 +14,15 @@ import pickle
 import sys
 sys.path.append("..") # access to library
 
+import os
+    
+    
 
 import neuroprob as mdl
 from neuroprob import utils
 
 import models
+import model_utils
 
 
 
@@ -34,6 +38,7 @@ def init_argparse():
         version = f"{parser.prog} version 1.0.0"
     )
     
+    parser.add_argument('--max_iters', default=3000, type=int)
     parser.add_argument('--batchsize', default=10000, type=int)
     parser.add_argument('--binsize', default=100, type=int)
     parser.add_argument('--session_id', default=1, type=int)
@@ -55,9 +60,9 @@ def init_argparse():
 
 
 
-def get_dataset(session_id, phase, bin_size):
+def get_dataset(session_id, phase, bin_size, datadir='./data'):
 
-    data = np.load('./data/{}_{}.npz'.format(session_id, phase))
+    data = np.load(datadir+'/{}_{}.npz'.format(session_id, phase))
     spktrain = data['spktrain']
     x_t = data['x_t']
     y_t = data['y_t']
@@ -132,7 +137,7 @@ def main():
         else:
             mapping_net = None
 
-        for cvdata in models.get_cv_sets(m, cv_runs, parser.batchsize, rc_t, resamples, rcov):
+        for cvdata in model_utils.get_cv_sets(m, cv_runs, parser.batchsize, rc_t, resamples, rcov):
             kcv, ftrain, fcov, vtrain, vcov, batch_size = cvdata
 
             lowest_loss = np.inf # nonconvex pick the best
@@ -141,7 +146,7 @@ def main():
                 retries = 0
                 while True:
                     try:
-                        full_model, _ = models.set_model('HDC', max_count, mtype, r_mode, ll_mode, fcov, units_used, tbin, 
+                        full_model, _ = models.set_model(max_count, mtype, r_mode, ll_mode, fcov, units_used, tbin, 
                                                          ftrain, num_induc, batch_size=batch_size, 
                                                          inv_link=inv_link, mapping_net=mapping_net, C=C, enc_layers=enc_layers)
                         full_model.to(dev)
@@ -158,7 +163,7 @@ def main():
                         full_model.set_optimizers(opt_tuple, opt_lr_dict)#, nat_grad=('rate_model.0.u_loc', 'rate_model.0.u_scale_tril'))
 
                         annealing = lambda x: 1.0
-                        losses = full_model.fit(3000, loss_margin=-1e0, margin_epochs=100, kl_anneal_func=annealing, 
+                        losses = full_model.fit(parser.max_iters, loss_margin=-1e0, margin_epochs=100, kl_anneal_func=annealing, 
                                                 cov_samples=parser.cov_MC, ll_samples=parser.ll_MC)
                         break
                         
@@ -183,6 +188,9 @@ def main():
                                                                   mtype, ll_mode, r_mode, C, kcv)
                     if cv_switch:
                         model_name += '_'
+                        
+                    if not os.path.exists('./checkpoint'):
+                        os.makedirs('./checkpoint')
                     torch.save({'full_model': full_model.state_dict()}, './checkpoint/' + model_name)
 
 

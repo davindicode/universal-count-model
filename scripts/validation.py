@@ -14,12 +14,15 @@ import pickle
 import sys
 sys.path.append("..") # access to library
 
+import os
+    
+    
 
 import neuroprob as mdl
 from neuroprob import utils
 
 import models
-
+import model_utils
 
 
 
@@ -34,6 +37,7 @@ def init_argparse():
         version = f"{parser.prog} version 1.0.0"
     )
     
+    parser.add_argument('--max_iters', default=3000, type=int)
     parser.add_argument('--batchsize', default=10000, type=int)
     parser.add_argument('--datatype', type=int)
     parser.add_argument('--modes', nargs='+', type=int)
@@ -149,20 +153,20 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
 
 
 ### Data ###
-def get_dataset(data_type):
+def get_dataset(data_type, datadir='./data'):
     
     if data_type == 0:
-        syn_data = np.load('./data/CMPh_HDC.npz')
+        syn_data = np.load(datadir+'/CMPh_HDC.npz')
         rhd_t = syn_data['rhd_t']
         ra_t = rhd_t
         
     elif data_type == 1:
-        syn_data = np.load('./data/IP_HDC.npz')
+        syn_data = np.load(datadir+'/IP_HDC.npz')
         rhd_t = syn_data['rhd_t']
         ra_t = syn_data['ra_t']
     
     rc_t = syn_data['spktrain']
-    tbin = syn_data['tbin']
+    tbin = syn_data['tbin'].item()
         
     resamples = rc_t.shape[1]
     units_used = rc_t.shape[0]
@@ -185,21 +189,21 @@ def main():
     print(max_count)
 
     nonconvex_trials = parser.ncvx
-    modes_tot = [('GP', 'IP', 'hd', None, 8, 'exp', 1, [], False, 10, False, 'ew'), # 1
-                 ('GP', 'hNB', 'hd', None, 8, 'exp', 1, [], False, 10, False, 'ew'), 
-                 ('GP', 'U', 'hd', None, 8, 'identity', 3, [], False, 10, False, 'ew'), 
-                 ('ANN', 'U', 'hd', None, 8, 'identity', 3, [], False, 10, False, 'ew'), 
-                 ('GP', 'IP', 'T1', None, 8, 'exp', 1, [0], False, 10, False, 'ew'), # 5
-                 ('GP', 'hNB', 'T1', None, 8, 'exp', 1, [0], False, 10, False, 'ew'), 
-                 ('GP', 'U', 'T1', None, 8, 'identity', 3, [0], False, 10, False, 'ew'), 
-                 ('ANN', 'U', 'T1', None, 8, 'identity', 3, [0], False, 10, False, 'ew'), 
-                 ('GP', 'U', 'hdxR1', None, 16, 'identity', 3, [1], False, 10, False, 'ew')] # 9
+    modes_tot = [('GP', 'IP', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), # 1
+                 ('GP', 'hNB', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), 
+                 ('GP', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'), 
+                 ('ANN', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'), 
+                 ('GP', 'IP', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew'), # 5
+                 ('GP', 'hNB', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew'), 
+                 ('GP', 'U', 'T1', 8, 'identity', 3, [0], False, 10, False, 'ew'), 
+                 ('ANN', 'U', 'T1', 8, 'identity', 3, [0], False, 10, False, 'ew'), 
+                 ('GP', 'U', 'hdxR1', 16, 'identity', 3, [1], False, 10, False, 'ew')] # 9
     
 
     modes = [modes_tot[m] for m in parser.modes]
     cv_runs = parser.cv
     for m in modes:
-        mtype, ll_mode, r_mode, spk_cpl, num_induc, inv_link, C, z_dims, delays, folds, cv_switch, basis_mode = m
+        mtype, ll_mode, r_mode, num_induc, inv_link, C, z_dims, delays, folds, cv_switch, basis_mode = m
         enc_layers, basis = models.hyper_params(basis_mode)
         print(m)
 
@@ -209,7 +213,7 @@ def main():
         else:
             mapping_net = None
 
-        for cvdata in models.get_cv_sets(m, cv_runs, parser.batchsize, rc_t, resamples, rcov):
+        for cvdata in model_utils.get_cv_sets(m, cv_runs, parser.batchsize, rc_t, resamples, rcov):
             kcv, ftrain, fcov, vtrain, vcov, batch_size = cvdata
 
             lowest_loss = np.inf # nonconvex pick the best
@@ -218,7 +222,7 @@ def main():
                 retries = 0
                 while True:
                     try:
-                        full_model, _ = models.set_model('HDC', max_count, mtype, r_mode, ll_mode, spk_cpl, fcov, units_used, tbin, 
+                        full_model, _ = models.set_model(max_count, mtype, r_mode, ll_mode, fcov, units_used, tbin, 
                                                          ftrain, num_induc, batch_size=batch_size, 
                                                          inv_link=inv_link, mapping_net=mapping_net, C=C, enc_layers=enc_layers)
                         full_model.to(dev)
@@ -234,7 +238,7 @@ def main():
 
                         annealing = lambda x: 1.0#min(1.0, 0.002*x)
 
-                        losses = full_model.fit(3000, loss_margin=-1e0, margin_epochs=100, kl_anneal_func=annealing, 
+                        losses = full_model.fit(parser.max_iters, loss_margin=-1e0, margin_epochs=100, kl_anneal_func=annealing, 
                                                 cov_samples=parser.cov_MC, ll_samples=parser.ll_MC)
                         break
                         
@@ -253,6 +257,9 @@ def main():
                     if basis_mode != 'ew':
                         name += basis_mode
                     model_name = '{}{}_{}_{}_{}_C={}_{}'.format(name, parser.datatype, mtype, ll_mode, r_mode, C, kcv)
+                    
+                    if not os.path.exists('./checkpoint'):
+                        os.makedirs('./checkpoint')
                     torch.save({'full_model': full_model.state_dict()}, './checkpoint/' + model_name)
 
 
