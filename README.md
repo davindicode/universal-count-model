@@ -49,7 +49,7 @@ Line 108 in HDC.py gives the definition of all modes for the head direction cell
 All possible flags and their default values can be seen in the validation.py and HDC.py scripts.
 The file models.py defines the encoding models and uses the library code (neuroprob) to implement and run these probabilistic models.
 
-In terms of neural data, the synthetic populatio data used in the paper and the head direction cell data is included in the ```./data/``` folder.
+In terms of neural data, the synthetic population data used in the paper and the head direction cell data is included in the ```./data/``` folder.
 All required modes in the analysis notebooks can be seen in the code as it loads trained models.
 Note that there are separate notebooks for synthetic (validation) and real (HDC) datasets.
 All trained models are stored in the ```./checkpoint/``` folder.
