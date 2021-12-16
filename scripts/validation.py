@@ -156,7 +156,7 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
 def get_dataset(data_type, datadir='./data'):
     
     if data_type == 0:
-        syn_data = np.load(datadir+'/CMPh_HDC.npz')
+        syn_data = np.load(datadir+'/hCMP_HDC.npz')
         rhd_t = syn_data['rhd_t']
         ra_t = rhd_t
         
