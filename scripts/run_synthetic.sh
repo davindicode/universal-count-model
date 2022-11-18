@@ -1,6 +1,14 @@
 #!/bin/bash
 
-
+modes_tot = [('GP', 'IP', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), # 1
+             ('GP', 'hNB', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), 
+             ('GP', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'), 
+             ('ANN', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'), 
+             ('GP', 'IP', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew'), # 5
+             ('GP', 'hNB', 'T1', 8, 'exp', 1, [0], False, 10, False, 'ew'), 
+             ('GP', 'U', 'T1', 8, 'identity', 3, [0], False, 10, False, 'ew'), 
+             ('ANN', 'U', 'T1', 8, 'identity', 3, [0], False, 10, False, 'ew'), 
+             ('GP', 'U', 'hdxR1', 16, 'identity', 3, [1], False, 10, False, 'ew')] # 9
 
 
 # regression models

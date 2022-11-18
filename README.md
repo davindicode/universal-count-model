@@ -5,8 +5,8 @@
 
 This is the code repository for this [paper](https://www.biorxiv.org/content/10.1101/2021.06.27.450063v2).
 Models are implemented in Python with dependencies on libraries listed below at the end.
-We also include a neural data analysis library that was written for constructing scalable neural encoding models using a modern deep learning framework.
-The baseline models, along with the universal count model proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.
+We also include a neural data analysis library that was written for constructing scalable neural encoding models using a modern deep learning framework (see ```lib/``` for more details).
+The baseline models, along with the Universal Count Model (UCM) proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.
 
 <p align="center">
 <img src="./plots/schematic.png" width="800"/> 
@@ -23,8 +23,8 @@ Here is where all the code for fitting models is located.
 
 
 #### 2. (Optional) Run synthetic_data.py to generate data from synthetic populations
-This script generates the two synthetic populations and saves them into ```./data/```, both generated spike counts and behaviour as well as the encoding models.
-Note that the population data used in the paper has been included in ```./data/```, running this script will overwrite those files!
+This script generates the two synthetic populations and saves them into ```data/```, both generated spike counts and behaviour as well as the encoding models.
+Note that the population data used in the paper has been included in ```data/```, running this script will overwrite those files!
 
 
 #### 3. Run the scripts to fit models
@@ -49,7 +49,7 @@ Line 108 in HDC.py gives the definition of all modes for the head direction cell
 All possible flags and their default values can be seen in the validation.py and HDC.py scripts.
 The file models.py defines the encoding models and uses the library code (neuroprob) to implement and run these probabilistic models.
 
-In terms of neural data, the synthetic population data used in the paper and the head direction cell data is included in the ```./data/``` folder.
+In terms of neural data, the synthetic population data used in the paper and the head direction cell data is included in the ```data/``` folder.
 All required modes in the analysis notebooks can be seen in the code as it loads trained models.
 Note that there are separate notebooks for synthetic (validation) and real (HDC) datasets.
 All trained models are stored in the ```./checkpoint/``` folder.
@@ -68,54 +68,11 @@ Here one can find all the Jupyter notebooks for analysis and plotting.
 
 #### 5. Run the analysis notebooks to analyze the data
 By running the analysis notebooks, we reproduce the plotting data for figures in the paper.
-Intermediate files (pickled) will be stored in the ```./saves/``` folder.
+Intermediate files (pickled) will be stored in the ```saves/``` folder.
 
 
 #### 6. Run the plotting notebooks
 This loads the analysis results and plots paper figures in .pdf and .svg formats, exported to the ```./output/``` folder.
-
-
-
-
-## Neural data analysis library
-
-Here we present a short description of a preliminary version of the neural data analysis library used (called neuroprob) to facilitate constructing neural encoding models.
-The list below shows what has implemented for use so far, see the models.py file for an example of code utilizing the library.
-
-
-#### Primitives
-
-There are three kinds of objects that form the building blocks:
-1. Input group *p(X,Z)* and *q(Z)*
-2. Mapping *p(F|X,Z)*
-3. Likelihood *p(Y|F)*
-
-The overal generative model is specified along with the variational posterior through these primitives.
-Input groups can contain observed and latent variables, with different priors one can put onto the latent variables.
-
-
-#### Models implemented
-
-* Linear-nonlinear and GP mappings
-* LVMs
-    - Toroidal latent space priors ([Manifold GPLVM](https://arxiv.org/abs/2006.07429))
-    - AR(1) temporal prior on latents
-* GLM filters
-    - spike-history couplings
-    - spike-spike couplings
-    - stimulus history
-* Inhomogenenous renewal point processes
-    - Gamma
-    - Inverse Gaussian
-    - Log Normal
-* Count process likelihoods
-    - Poisson
-    - Zero-inflated Poisson
-    - Negative binomial
-    - Conway-Maxwell-Poisson
-    - Universal (this work)
-* Gaussian likelihoods
-    - Univariate
 
 
 
