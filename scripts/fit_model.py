@@ -1,15 +1,12 @@
 import numpy as np
+
 import torch
 import torch.nn as nn
-import torch.optim as optim
 
-import pickle
+import models
 
 import sys
 sys.path.append("../lib/")
-
-
-import helper
 import neuroprob as nprb
 from neuroprob import utils
 
@@ -18,45 +15,85 @@ from neuroprob import utils
 ### data ###
 def get_dataset(data_type, bin_size, single_spikes, path):
 
-    assert bin_size == 1
+    if data_type == 'hCMP' or data_type == 'IP':  # synthetic
+        assert bin_size == 1
+        metainfo = {}
+        
+        if data_type == 'hCMP':
+            syn_data = np.load(datadir + "/hCMP_HDC.npz")
+            rcov = {
+                'hd': syn_data["rhd_t"],
+            }
+            name = "hCMP"
+
+        elif data_type == 'IP':
+            syn_data = np.load(datadir + "/IP_HDC.npz")
+            rcov = {
+                'hd': syn_data["rhd_t"],
+                'a': syn_data["ra_t"]
+            }
+            name = "IP"
+
+        rc_t = syn_data["spktrain"]
+        tbin = syn_data["tbin"].item()
+
+        resamples = rc_t.shape[1]
+        units_used = rc_t.shape[0]
+        
+
+    elif data_type == 'th1':
+        data = np.load(path + "Mouse28_140313_wake.npz")
+        hdc_unit = data['hdc_unit']
+        neuron_regions = data["neuron_regions"][hdc_unit]  # 1 is ANT, 0 is PoS
+        
+        spktrain = data["spktrain"][hdc_unit, :]
+        x_t = data["x_t"]
+        y_t = data["y_t"]
+        hd_t = data["hd_t"]
+
+        sample_bin = 0.001
+        track_samples = spktrain.shape[1]
+
+        tbin, resamples, rc_t, (rhd_t, rx_t, ry_t) = utils.neural.bin_data(
+            bin_size,
+            sample_bin,
+            spktrain,
+            track_samples,
+            (np.unwrap(hd_t), x_t, y_t),
+            average_behav=True,
+            binned=True,
+        )
+
+        # recompute velocities
+        rw_t = (rhd_t[1:] - rhd_t[:-1]) / tbin
+        rw_t = np.concatenate((rw_t, rw_t[-1:]))
+
+        rvx_t = (rx_t[1:] - rx_t[:-1]) / tbin
+        rvy_t = (ry_t[1:] - ry_t[:-1]) / tbin
+        rs_t = np.sqrt(rvx_t**2 + rvy_t**2)
+        rs_t = np.concatenate((rs_t, rs_t[-1:]))
+        rtime_t = np.arange(resamples) * tbin
+
+        rcov = {
+            "hd": rhd_t % (2 * np.pi),
+            "omega": rw_t,
+            "speed": rs_t,
+            "x": rx_t,
+            "y": ry_t,
+            "time": rtime_t,
+        }
+        
+        name = "th1"
+        metainfo = {
+            "neuron_regions": neuron_regions,
+        }
     
-    if data_type == 0:
-        syn_data = np.load(datadir + "/hCMP_HDC.npz")
-        rhd_t = syn_data["rhd_t"]
-        ra_t = rhd_t
-
-    elif data_type == 1:
-        syn_data = np.load(datadir + "/IP_HDC.npz")
-        rhd_t = syn_data["rhd_t"]
-        ra_t = syn_data["ra_t"]
-
-    rc_t = syn_data["spktrain"]
-    tbin = syn_data["tbin"].item()
-
-    resamples = rc_t.shape[1]
-    units_used = rc_t.shape[0]
-    rcov = (rhd_t, ra_t, rhd_t, rhd_t, rhd_t, rhd_t)
-
-
-    rcov = {
-        "hd": rhd_t % (2 * np.pi),
-        "a": ra_t,
-        "speed": rs_t,
-        "x": rx_t,
-        "y": ry_t,
-        "time": rtime_t,
-    }
-
+    # export
     if single_spikes is True:
         rc_t[rc_t > 1.0] = 1.0
 
     units_used = rc_t.shape[0]
     max_count = int(rc_t.max())
-
-    name = "th1"
-    metainfo = {
-        "region_edge": region_edge,
-    }
 
     dataset_dict = {
         "name": name,
@@ -72,74 +109,6 @@ def get_dataset(data_type, bin_size, single_spikes, path):
     }
     return dataset_dict
 
-
-def get_dataset(bin_size, single_spikes, path):
-
-    data = np.load(path + "Mouse28-140313_wake.npz")
-    spktrain = data["spktrain"]
-    x_t = data["x_t"]
-    y_t = data["y_t"]
-    hd_t = data["hd_t"]
-    region_edge = data["region_edge"]
-
-    sample_bin = 0.001
-
-    neurons = spktrain.shape[0]
-    track_samples = spktrain.shape[1]
-
-    tbin, resamples, rc_t, (rhd_t, rx_t, ry_t) = utils.neural.bin_data(
-        bin_size,
-        sample_bin,
-        spktrain,
-        track_samples,
-        (np.unwrap(hd_t), x_t, y_t),
-        average_behav=True,
-        binned=True,
-    )
-
-    # recompute velocities
-    rw_t = (rhd_t[1:] - rhd_t[:-1]) / tbin
-    rw_t = np.concatenate((rw_t, rw_t[-1:]))
-
-    rvx_t = (rx_t[1:] - rx_t[:-1]) / tbin
-    rvy_t = (ry_t[1:] - ry_t[:-1]) / tbin
-    rs_t = np.sqrt(rvx_t**2 + rvy_t**2)
-    rs_t = np.concatenate((rs_t, rs_t[-1:]))
-    rtime_t = np.arange(resamples) * tbin
-
-    rcov = {
-        "hd": rhd_t % (2 * np.pi),
-        "omega": rw_t,
-        "speed": rs_t,
-        "x": rx_t,
-        "y": ry_t,
-        "time": rtime_t,
-    }
-
-    if single_spikes is True:
-        rc_t[rc_t > 1.0] = 1.0
-
-    units_used = rc_t.shape[0]
-    max_count = int(rc_t.max())
-
-    name = "th1"
-    metainfo = {
-        "region_edge": region_edge,
-    }
-
-    dataset_dict = {
-        "name": name,
-        "covariates": rcov,
-        "spiketrains": rc_t,
-        "neurons": units_used,
-        "metainfo": metainfo,
-        "tbin": tbin,
-        "timesamples": resamples,
-        "max_count": max_count,
-        "bin_size": bin_size,
-        "trial_sizes": None,
-    }
-    return dataset_dict
 
 
 ### model ###    
@@ -259,12 +228,12 @@ def enc_used(model_dict, covariates, learn_mean):
             kernel_tuples += [("SE", "euclid", torch.tensor(euclid_ls))]
 
         # z
-        latent_k, latent_u = helper.models.latent_kernel(z_mode, num_induc, out_dims)
+        latent_k, latent_u = models.latent_kernel(z_mode, num_induc, out_dims)
         kernel_tuples += latent_k
         ind_list += latent_u
 
         # objects
-        kernelobj, constraints = helper.models.create_kernel(
+        kernelobj, constraints = models.create_kernel(
             kernel_tuples, "exp", tensor_type
         )
 
@@ -303,20 +272,21 @@ def enc_used(model_dict, covariates, learn_mean):
 
 ### main ###
 def main():
-    parser = helper.models.standard_parser(
+    parser = models.standard_parser(
         "%(prog)s [OPTION] [FILE]...", "Fit model to data."
     )
     parser.add_argument("--data_path", action="store", type=str)
     parser.add_argument(
         "--checkpoint_dir", default="./checkpoint/", action="store", type=str
     )
+    parser.add_argument("--data_type", action="store", type=str)
 
     args = parser.parse_args()
 
     dev = nprb.inference.get_device(gpu=args.gpu)
-    dataset_dict = get_dataset(args.bin_size, args.single_spikes, args.data_path)
+    dataset_dict = get_dataset(args.data_type, args.bin_size, args.single_spikes, args.data_path)
 
-    helper.models.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
+    models.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
 
 
 if __name__ == "__main__":

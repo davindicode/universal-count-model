@@ -9,9 +9,14 @@ We also include a neural data analysis library that was written for constructing
 The baseline models, along with the Universal Count Model (UCM) proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.
 
 <p align="center">
-<img src="./plots/schematic.png" width="800"/> 
+<img src="./media/schematic.png" width="800"/> 
 </p>
 
+
+
+## Poster
+
+<a href="./media/poster.pdf"><img src="./media/logo.png" alt="poster" style="width:200px;height:200px;"></a>
 
 
 
@@ -78,7 +83,7 @@ This loads the analysis results and plots paper figures in .pdf and .svg formats
 
 
 ## Dependencies:
-- [PyTorch](https://pytorch.org/) version >= 1.7
+- [PyTorch](https://pytorch.org/) version >= 1.8
 - [NumPy](https://numpy.org/)
 - [SciPy](https://scipy.org/)
 - [tqdm](https://tqdm.github.io/) for visualizing fitting/training progress
