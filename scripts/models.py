@@ -17,7 +17,6 @@ import neuroprob as nprb
 from neuroprob import kernels, utils
 
 
-
 ### GP ###
 def create_kernel(kernel_tuples, kern_f, tensor_type):
     """
@@ -163,12 +162,12 @@ def latent_kernel(z_mode, num_induc, out_dims):
                 ind_list += [np.random.randn(num_induc)]
             ls = np.array([l_one] * dz)
             kernel_tuples += [("SE", "euclid", torch.tensor(ls))]
-            
+
         elif zc[:1] == "T":
             dz = int(zc[1:])
             for h in range(dz):
                 ind_list += [np.linspace(0, 2 * np.pi, num_induc + 1)[:-1]]
-            ls = np.array([10. * l_one] * dz)
+            ls = np.array([10.0 * l_one] * dz)
             kernel_tuples += [("SE", "euclid", torch.tensor(ls))]
 
         elif zc != "":
@@ -714,7 +713,6 @@ def setup_model(data_tuple, model_dict, enc_used):
     return full
 
 
-
 def extract_model_dict(config, dataset_dict):
     if config.tensor_type == "float":
         tensor_type = torch.float
@@ -754,7 +752,6 @@ def extract_model_dict(config, dataset_dict):
     return model_dict
 
 
-
 def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
     """
     General training loop
@@ -776,7 +773,7 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
     batchsize = parser_args.batch_size
     hist_len = parser_args.hist_len
     z_mode = parser_args.z_mode
-    
+
     model_dict = extract_model_dict(parser_args, dataset_dict)
 
     # training
@@ -858,9 +855,8 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
                 print(e)
 
 
-                
 def load_model(
-    config_name, 
+    config_name,
     checkpoint_dir,
     dataset_dict,
     enc_used,
@@ -870,14 +866,14 @@ def load_model(
     """
     Load the model with cross-validated data structure
     """
-    with open(checkpoint_dir + config_name + '.p', "rb") as f:
+    with open(checkpoint_dir + config_name + ".p", "rb") as f:
         training_results = pickle.load(f)
-        
+
     delay, cv_run = training_results["delay"], training_results["cv_run"]
     config = training_results["config"]
     model_dict = extract_model_dict(config, dataset_dict)
     model_dict["seed"] = training_results["seed"]
-    
+
     has_latent = False if model_dict["z_mode"] == "" else True
     cvdata = preprocess_data(
         dataset_dict,
@@ -922,5 +918,5 @@ def load_model(
         checkpoint_dir + model_name + ".pt", map_location="cuda:{}".format(gpu)
     )
     full_model.load_state_dict(checkpoint["full_model"])
-    
+
     return full_model, training_results, fit_set, validation_set

@@ -1,0 +1,11 @@
+-e .
+sphinx
+sphinx-rtd-theme
+pytest
+pytest-cov
+torch==1.7
+numpy 
+scipy
+matplotlib
+scikit-learn
+mypy

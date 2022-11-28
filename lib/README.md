@@ -1,7 +1,16 @@
 # Neural data analysis library
 
-Here we present a short description of a preliminary version of the neural data analysis library used (called "neuroprob") to facilitate constructing scalable probabilsitic neural encoding models.
+Here we present a short description of the neural data analysis library used (called "neuroprob") to facilitate constructing scalable probabilsitic neural encoding models.
 The list below shows what has implemented for use so far, see the models.py file for an example of code utilizing the library.
+
+
+
+### Setup
+
+```sh
+# inside virtual environment
+pip install -e .
+
 
 
 ### Primitives
@@ -21,14 +30,6 @@ Input groups can contain observed and latent variables, with different priors on
 * LVMs
     - Toroidal latent space priors ([Manifold GPLVM](https://arxiv.org/abs/2006.07429))
     - AR(1) temporal prior on latents
-* GLM filters
-    - spike-history couplings
-    - spike-spike couplings
-    - stimulus history
-* Inhomogenenous renewal point processes
-    - Gamma
-    - Inverse Gaussian
-    - Log Normal
 * Count process likelihoods
     - Poisson
     - Zero-inflated Poisson

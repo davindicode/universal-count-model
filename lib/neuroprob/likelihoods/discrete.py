@@ -7,8 +7,105 @@ from scipy.special import factorial
 from torch.nn.parameter import Parameter
 
 from .. import base, distributions as dist
-from . import point_process
 
+
+
+def gen_IBP(intensity):
+    """
+    Sample of the Inhomogenous Bernoulli Process
+
+    :param numpy.array intensity: intensity of the Bernoulli process at array index
+    :returns: sample of binary variables with same shape as intensity
+    :rtype: numpy.array
+    """
+    b = Bernoulli(torch.tensor(intensity))
+    return b.sample().numpy()
+
+
+def gen_CMP(mu, nu, max_rejections=1000):
+    """
+    Use rejection sampling to sample from the COM-Poisson count distribution. [1]
+
+    References:
+
+    [1] `Bayesian Inference, Model Selection and Likelihood Estimation using Fast Rejection
+         Sampling: The Conway-Maxwell-Poisson Distribution`, Alan Benson, Nial Friel (2021)
+
+    :param numpy.array rate: input rate of shape (..., time)
+    :param float tbin: time bin size
+    :param float eps: order of magnitude of P(N>1)/P(N<2) per dilated Bernoulli bin
+    :param int max_count: maximum number of spike counts per bin possible
+    :returns: inhomogeneous Poisson process sample
+    :rtype: numpy.array
+    """
+    trials = mu.shape[0]
+    neurons = mu.shape[1]
+    Y = np.empty(mu.shape)
+
+    for tr in range(trials):
+        for n in range(neurons):
+            mu_, nu_ = mu[tr, n, :], nu[tr, n, :]
+
+            # Poisson
+            k = 0
+            left_bins = np.where(nu_ >= 1)[0]
+            while len(left_bins) > 0:
+                mu__, nu__ = mu_[left_bins], nu_[left_bins]
+                y_dash = torch.poisson(torch.tensor(mu__)).numpy()
+                _mu_ = np.floor(mu__)
+                alpha = (
+                    mu__ ** (y_dash - _mu_)
+                    / scsps.factorial(y_dash)
+                    * scsps.factorial(_mu_)
+                ) ** (nu__ - 1)
+
+                u = np.random.rand(*mu__.shape)
+                selected = u <= alpha
+                Y[tr, n, left_bins[selected]] = y_dash[selected]
+                left_bins = left_bins[~selected]
+                if k >= max_rejections:
+                    raise ValueError("Maximum rejection steps exceeded")
+                else:
+                    k += 1
+
+            # geometric
+            k = 0
+            left_bins = np.where(nu_ < 1)[0]
+            while len(left_bins) > 0:
+                mu__, nu__ = mu_[left_bins], nu_[left_bins]
+                p = 2 * nu__ / (2 * mu__ * nu__ + 1 + nu__)
+                u_0 = np.random.rand(*p.shape)
+
+                y_dash = np.floor(np.log(u_0) / np.log(1 - p))
+                a = np.floor(mu__ / (1 - p) ** (1 / nu__))
+                alpha = (1 - p) ** (a - y_dash) * (
+                    mu__ ** (y_dash - a) / scsps.factorial(y_dash) * scsps.factorial(a)
+                ) ** nu__
+
+                u = np.random.rand(*mu__.shape)
+                selected = u <= alpha
+                Y[tr, n, left_bins[selected]] = y_dash[selected]
+                left_bins = left_bins[~selected]
+                if k >= max_rejections:
+                    raise ValueError("Maximum rejection steps exceeded")
+                else:
+                    k += 1
+
+    return Y
+
+    """
+    if rate.max() == 0:
+        return np.zeros_like(rate)
+        
+    dt_ = np.sqrt(eps)/rate.max()
+    dilation = max(int(np.ceil(tbin/dt_)), 1) # number of counts to allow per original bin
+    if dilation > max_count:
+        raise ValueError('Maximum count ({}, requested {}) exceeded for Poisson process sampling'.format(max_count, dilation))
+    tbin_ = tbin / dilation
+    rate_ = np.repeat(rate, dilation, axis=-1) # repeat to allow IBP to sum to counts > 1
+    return gen_IBP(rate_*tbin_).reshape(*rate.shape[:-1], -1, dilation).sum(-1)
+    """
+    
 
 class _count_model(base._likelihood):
     """
@@ -333,7 +430,7 @@ class Bernoulli(_count_model):
         :rtype: np.array
         """
         neuron = self._validate_neuron(neuron)
-        return point_process.gen_IBP(rate[:, neuron, :] * self.tbin.item())
+        return gen_IBP(rate[:, neuron, :] * self.tbin.item())
 
 
 class Poisson(_count_model):
@@ -497,7 +594,7 @@ class ZI_Poisson(_count_model):
                     .numpy()
                 )
 
-        zero_mask = point_process.gen_IBP(alpha_)
+        zero_mask = gen_IBP(alpha_)
         return (1.0 - zero_mask) * torch.poisson(
             torch.tensor(rate_ * self.tbin.item())
         ).numpy()
@@ -786,7 +883,7 @@ class COM_Poisson(_count_model):
                 disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
             nu_ = torch.exp(disp).cpu().numpy()
 
-        return point_process.gen_CMP(mu_, nu_)
+        return gen_CMP(mu_, nu_)
 
 
 class hCOM_Poisson(COM_Poisson):

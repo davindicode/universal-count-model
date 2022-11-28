@@ -22,7 +22,6 @@ import pickle
 import helper
 
 
-
 ### synthetic data ###
 
 # parameterizations
@@ -283,7 +282,6 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     return glm
 
 
-
 ### main ###
 def main():
     # Gaussian von Mises bump head direction model
@@ -299,7 +297,6 @@ def main():
         hd_t[k] = hd_t[k - 1] + 0.5 * rn[k]
 
     hd_t = hd_t % (2 * np.pi)
-
 
     # GP trajectory sample
     Tl = track_samples
@@ -319,7 +316,6 @@ def main():
     eps = torch.randn(Tl).double()
     v = L @ eps
     a_t = v.data.numpy()
-
 
     ### sample activity ###
 
@@ -346,10 +342,8 @@ def main():
     )
     rhd_t = rhd_t % (2 * np.pi)
 
-
     np.savez_compressed("./data/CMPh_HDC", spktrain=rc_t, rhd_t=rhd_t, tbin=tbin)
     torch.save({"model": glm.state_dict()}, "./data/CMPh_HDC_model")
-
 
     # modulated Poisson
     neurons = 50
@@ -360,7 +354,6 @@ def main():
     ]
     glm = IP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
     glm.to(dev)
-
 
     _, rate, _ = glm.evaluate(0)
     syn_train = glm.likelihood.sample(rate[0].cpu().numpy())
@@ -378,10 +371,11 @@ def main():
     )
     rhd_t = rhd_t % (2 * np.pi)
 
-
-    np.savez_compressed("./data/IP_HDC", spktrain=rc_t, rhd_t=rhd_t, ra_t=ra_t, tbin=tbin)
+    np.savez_compressed(
+        "./data/IP_HDC", spktrain=rc_t, rhd_t=rhd_t, ra_t=ra_t, tbin=tbin
+    )
     torch.save({"model": glm.state_dict()}, "./data/IP_HDC_model")
 
-    
+
 if __name__ == "__main__":
     main()

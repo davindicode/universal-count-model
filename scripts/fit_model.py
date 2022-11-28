@@ -1,52 +1,50 @@
+import sys
+
+import models
 import numpy as np
 
 import torch
 import torch.nn as nn
 
-import models
-
-import sys
 sys.path.append("../lib/")
 import neuroprob as nprb
 from neuroprob import utils
 
 
-
 ### data ###
 def get_dataset(data_type, bin_size, single_spikes, path):
 
-    if data_type == 'hCMP' or data_type == 'IP':  # synthetic
+    if data_type == "hCMP" or data_type == "IP":  # synthetic
         assert bin_size == 1
         metainfo = {}
-        
-        if data_type == 'hCMP':
+
+        if data_type == "hCMP":
             syn_data = np.load(datadir + "/hCMP_HDC.npz")
             rcov = {
-                'hd': syn_data["rhd_t"],
+                "hd": syn_data["rhd_t"],
             }
-            name = "hCMP"
 
-        elif data_type == 'IP':
+        elif data_type == "IP":
             syn_data = np.load(datadir + "/IP_HDC.npz")
-            rcov = {
-                'hd': syn_data["rhd_t"],
-                'a': syn_data["ra_t"]
-            }
-            name = "IP"
+            rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
 
         rc_t = syn_data["spktrain"]
         tbin = syn_data["tbin"].item()
 
         resamples = rc_t.shape[1]
         units_used = rc_t.shape[0]
-        
 
-    elif data_type == 'th1':
+    elif data_type == "th1" or data_type == "th1leftover":
         data = np.load(path + "Mouse28_140313_wake.npz")
-        hdc_unit = data['hdc_unit']
-        neuron_regions = data["neuron_regions"][hdc_unit]  # 1 is ANT, 0 is PoS
-        
-        spktrain = data["spktrain"][hdc_unit, :]
+
+        if data_type == "th1":
+            sel_unit = data["hdc_unit"]
+        else:
+            sel_unit = ~data["hdc_unit"]
+
+        neuron_regions = data["neuron_regions"][sel_unit]  # 1 is ANT, 0 is PoS
+        spktrain = data["spktrain"][sel_unit, :]
+
         x_t = data["x_t"]
         y_t = data["y_t"]
         hd_t = data["hd_t"]
@@ -82,12 +80,13 @@ def get_dataset(data_type, bin_size, single_spikes, path):
             "y": ry_t,
             "time": rtime_t,
         }
-        
-        name = "th1"
+
         metainfo = {
             "neuron_regions": neuron_regions,
         }
-    
+
+    name = data_type
+
     # export
     if single_spikes is True:
         rc_t[rc_t > 1.0] = 1.0
@@ -110,8 +109,7 @@ def get_dataset(data_type, bin_size, single_spikes, path):
     return dataset_dict
 
 
-
-### model ###    
+### model ###
 class FFNN_model(nn.Module):
     """
     Multi-layer perceptron class
@@ -143,7 +141,6 @@ class FFNN_model(nn.Module):
             dim=-1,
         )
         return self.net(embed)
-
 
 
 def enc_used(model_dict, covariates, learn_mean):
@@ -233,9 +230,7 @@ def enc_used(model_dict, covariates, learn_mean):
         ind_list += latent_u
 
         # objects
-        kernelobj, constraints = models.create_kernel(
-            kernel_tuples, "exp", tensor_type
-        )
+        kernelobj, constraints = models.create_kernel(kernel_tuples, "exp", tensor_type)
 
         Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
         inpd = Xu.shape[-1]
@@ -254,16 +249,18 @@ def enc_used(model_dict, covariates, learn_mean):
             learn_mean=learn_mean,
             tensor_type=tensor_type,
         )
-        
+
     elif map_mode_comps[0] == "FFNN":  # FFNN mapping
         rate_model = FFNN_params(in_dims, enc_layers, angle_dims, inner_dims, inv_link)
         hist_len = 1
 
-        mu_ANN = FFNN_model(enc_layers, angle_dims, tot_dims - angle_dims, hist_len, neurons)
+        mu_ANN = FFNN_model(
+            enc_layers, angle_dims, tot_dims - angle_dims, hist_len, neurons
+        )
         mapping = mdl.parametrics.FFNN(
             tot_dims, neurons, inv_link, mu_ANN, sigma_ANN=None, tens_type=torch.float
         )
-        
+
     else:
         raise ValueError
 
@@ -272,9 +269,7 @@ def enc_used(model_dict, covariates, learn_mean):
 
 ### main ###
 def main():
-    parser = models.standard_parser(
-        "%(prog)s [OPTION] [FILE]...", "Fit model to data."
-    )
+    parser = models.standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
     parser.add_argument("--data_path", action="store", type=str)
     parser.add_argument(
         "--checkpoint_dir", default="./checkpoint/", action="store", type=str
@@ -284,7 +279,9 @@ def main():
     args = parser.parse_args()
 
     dev = nprb.inference.get_device(gpu=args.gpu)
-    dataset_dict = get_dataset(args.data_type, args.bin_size, args.single_spikes, args.data_path)
+    dataset_dict = get_dataset(
+        args.data_type, args.bin_size, args.single_spikes, args.data_path
+    )
 
     models.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
 

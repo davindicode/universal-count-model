@@ -7,7 +7,7 @@ from torch.nn.parameter import Parameter
 from tqdm.autonotebook import tqdm
 
 from . import base, distributions as dist
-from .likelihoods import point_process as point_process
+
 
 
 def get_device(gpu=0):
@@ -26,6 +26,7 @@ def get_device(gpu=0):
     )
     print("Using device: %s" % dev)
     return dev
+
 
 
 ### inputs ###
@@ -119,86 +120,6 @@ class probabilistic_mapping(base._VI_object):
 
         return f, KL_prior
 
-
-class filtered_input(base._VI_object):
-    """
-    Stimulus filtering as in GLMs
-    """
-
-    def __init__(self, input_series, stimulus_filter, tensor_type=torch.float):
-        self.register_buffer("input_series", input_series.type(tensor_type))
-
-        self.add_module("filter", stimulus_filter)
-        self.history_len = (
-            self.filter.history_len
-        )  # history excludes instantaneous part
-
-    def sample(self, b, batch_info, samples, net_input, importance_weighted):
-        """ """
-        _XZ = self.stimulus_filter(XZ.permute(0, 2, 1))[0].permute(
-            0, 2, 1
-        )  # ignore filter variance
-        KL_prior = self.stimulus_filter.KL_prior()
-
-        return _XZ, KL_prior
-
-
-# discrete variables
-class discrete_latent(base._VI_object):
-    """
-    Discrete variables are added as extra dimensions to the left hand side, and we perform enumeration
-    We add an input dimension with the integer categories
-    When enumeration is performed, this dimension is coupled to the left hand side extra dimensions
-    When performing SVI, we sample from the posterior...
-    """
-
-    def __init__(self, p_0, K, learn_p_0=False, tensor_type=torch.float):
-        if learn_p_0:
-            self.register_buffer("learn_p_0", learn_p_0)
-        else:
-            self.register_parameter("learn_p_0", Parameter(learn_p_0))
-
-        # self.filter_len = filter_len
-        # if self.stimulus_filter is not None and self.stimulus_filter.history_len != filter_len:
-        #    raise ValueError('Stimulus filter length and input filtering length do not match')
-
-    def _time_slice(self, XZ):
-        """ """
-        if self.stimulus_filter is not None:
-            _XZ = self.stimulus_filter(XZ.permute(0, 2, 1))[0].permute(
-                0, 2, 1
-            )  # ignore filter variance
-            KL_prior = self.stimulus_filter.KL_prior()
-        else:
-            _XZ = XZ[
-                :, self.filter_len - 1 :, :
-            ]  # covariates has initial history part excluded
-            KL_prior = 0
-
-        return _XZ, KL_prior
-
-
-class HMM_latent(base._VI_object):
-    """ """
-
-    def __init__(self, stimulus_filter):
-        self.add_module("stimulus_filter", stimulus_filter)
-        self.filter_len = filter_len
-
-    def _time_slice(self, XZ):
-        """ """
-        if self.stimulus_filter is not None:
-            _XZ = self.stimulus_filter(XZ.permute(0, 2, 1))[0].permute(
-                0, 2, 1
-            )  # ignore filter variance
-            KL_prior = self.stimulus_filter.KL_prior()
-        else:
-            _XZ = XZ[
-                :, self.filter_len - 1 :, :
-            ]  # covariates has initial history part excluded
-            KL_prior = 0
-
-        return _XZ, KL_prior
 
 
 # main group
