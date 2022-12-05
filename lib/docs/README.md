@@ -4,13 +4,13 @@
 
 1. Install dependencies
 ```sh
-pip install sphinx shpinx_rtd_theme numpydoc sphinx_autodoc_typehints
+pip install sphinx shpinx_rtd_theme sphinx_autodoc_typehints
 ```
 
 2. Build
 
 ```sh
-cd mgplvm-pytorch/docs
+cd docs
 make api
 make html
 ```

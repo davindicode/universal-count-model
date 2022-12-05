@@ -17,6 +17,7 @@ import neuroprob as nprb
 from neuroprob import kernels, utils
 
 
+
 ### GP ###
 def create_kernel(kernel_tuples, kern_f, tensor_type):
     """
@@ -39,7 +40,7 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
                 lengthscales = k_tuple[2]
 
                 if topology == "sphere":
-                    constraints += [
+                    _constraints += [
                         (track_dims, track_dims + len(lengthscales), "sphere"),
                     ]
 
@@ -249,7 +250,9 @@ class net(nn.Module):
 
 
 def latent_objects(z_mode, d_x, timesamples, tensor_type):
-    """ """
+    """
+    Create latent state prior and variational distribution
+    """
     z_mode_comps = z_mode.split("-")
 
     tot_d_z, latents = 0, []
@@ -418,44 +421,6 @@ def get_likelihood(model_dict, enc_used):
             tbin, inner_dims, inv_link, hgp, J=J, tensor_type=tensor_type
         )
 
-    elif ll_mode == "IPP":
-        likelihood = nprb.likelihoods.Poisson_pp(
-            tbin, inner_dims, inv_link, tensor_type=tensor_type
-        )
-
-    elif ll_mode == "IG":
-        shape = torch.ones(inner_dims)
-        likelihood = nprb.likelihoods.Gamma(
-            tbin,
-            inner_dims,
-            inv_link,
-            shape,
-            allow_duplicate=True,
-            tensor_type=tensor_type,
-        )
-
-    elif ll_mode_comps[0] == "IIG":
-        mu_t = torch.ones(inner_dims)
-        likelihood = nprb.likelihoods.inv_Gaussian(
-            tbin,
-            inner_dims,
-            inv_link,
-            mu_t,
-            allow_duplicate=True,
-            tensor_type=tensor_type,
-        )
-
-    elif ll_mode_comps[0] == "LN":
-        sigma_t = torch.ones(inner_dims)
-        likelihood = nprb.likelihoods.log_Normal(
-            tbin,
-            inner_dims,
-            inv_link,
-            sigma_t,
-            allow_duplicate=True,
-            tensor_type=tensor_type,
-        )
-
     elif ll_mode_comps[0] == "U":
         basis = get_basis(ll_mode_comps[1])
         mapping_net = net(C, basis, max_count, neurons, False)
@@ -499,6 +464,9 @@ def standard_parser(usage, description):
     parser = argparse.ArgumentParser(usage=usage, description=description)
     parser.add_argument(
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
+    )
+    parser.add_argument(
+        "--checkpoint_dir", default="./checkpoint/", action="store", type=str
     )
 
     parser.add_argument("--tensor_type", default="float", action="store", type=str)
@@ -835,6 +803,9 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
                     lowest_loss = np.inf  # nonconvex optimization, pick the best
 
                 if losses[-1] < lowest_loss:
+                    if not os.path.exists(checkpoint_dir):
+                        os.makedirs(checkpoint_dir)
+                    
                     # save model
                     torch.save(
                         {"full_model": full_model.state_dict()},
@@ -861,7 +832,7 @@ def load_model(
     dataset_dict,
     enc_used,
     batch_info,
-    gpu,
+    device,
 ):
     """
     Load the model with cross-validated data structure
@@ -910,12 +881,12 @@ def load_model(
 
     ### model ###
     full_model = setup_model(fit_data, model_dict, enc_used)
-    full_model.to(gpu)
+    full_model.to(device)
 
     ### load ###
     model_name = gen_name(model_dict, delay, cv_run)
     checkpoint = torch.load(
-        checkpoint_dir + model_name + ".pt", map_location="cuda:{}".format(gpu)
+        checkpoint_dir + model_name + ".pt", map_location=device
     )
     full_model.load_state_dict(checkpoint["full_model"])
 

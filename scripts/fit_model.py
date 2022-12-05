@@ -250,7 +250,7 @@ def enc_used(model_dict, covariates, learn_mean):
             tensor_type=tensor_type,
         )
 
-    elif map_mode_comps[0] == "FFNN":  # FFNN mapping
+    elif map_mode_comps[0] == "ffnn":  # feedforward neural network mapping
         rate_model = FFNN_params(in_dims, enc_layers, angle_dims, inner_dims, inv_link)
         hist_len = 1
 
@@ -271,9 +271,6 @@ def enc_used(model_dict, covariates, learn_mean):
 def main():
     parser = models.standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
     parser.add_argument("--data_path", action="store", type=str)
-    parser.add_argument(
-        "--checkpoint_dir", default="./checkpoint/", action="store", type=str
-    )
     parser.add_argument("--data_type", action="store", type=str)
 
     args = parser.parse_args()

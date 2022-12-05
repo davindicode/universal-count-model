@@ -1,15 +1,14 @@
 # Neural data analysis library
 
-Here we present a short description of the neural data analysis library used (called "neuroprob") to facilitate constructing scalable probabilsitic neural encoding models.
+Here we present a short description of the neural data analysis library used to facilitate constructing scalable probabilsitic neural encoding models.
 The list below shows what has implemented for use so far, see the models.py file for an example of code utilizing the library.
 
 
 
 ### Setup
 
-```sh
-# inside virtual environment
-pip install -e .
+    # inside virtual environment
+    pip install -e .
 
 
 
@@ -38,3 +37,12 @@ Input groups can contain observed and latent variables, with different priors on
     - Universal (this work)
 * Gaussian likelihoods
     - Univariate
+
+
+
+### Dependencies:
+- [PyTorch](https://pytorch.org/) version >= 1.8
+- [NumPy](https://numpy.org/)
+- [SciPy](https://scipy.org/)
+- [tqdm](https://tqdm.github.io/) for visualizing fitting/training progress
+- [Daft](https://docs.daft-pgm.org/en/latest/) to plot graphical model components

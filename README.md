@@ -5,7 +5,7 @@
 
 This is the code repository for this [paper](https://www.biorxiv.org/content/10.1101/2021.06.27.450063v2).
 Models are implemented in Python with dependencies on libraries listed below at the end.
-We also include a neural data analysis library that was written for constructing scalable neural encoding models using a modern deep learning framework (see ```lib/``` for more details).
+We also include a neural data analysis library called "neuroprob" that was written for constructing scalable neural encoding models for spike count data using a modern deep learning framework (see ```lib/``` for more details).
 The baseline models, along with the Universal Count Model (UCM) proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.
 
 <p align="center">
@@ -21,6 +21,9 @@ The baseline models, along with the Universal Count Model (UCM) proposed in our 
 
 
 ## Reproducing the results in the paper
+
+
+#### 1. cd into lib/ and install the "neuroprob" library
 
 
 #### 1. cd into ./scripts/
@@ -78,13 +81,3 @@ Intermediate files (pickled) will be stored in the ```saves/``` folder.
 
 #### 6. Run the plotting notebooks
 This loads the analysis results and plots paper figures in .pdf and .svg formats, exported to the ```./output/``` folder.
-
-
-
-
-## Dependencies:
-- [PyTorch](https://pytorch.org/) version >= 1.8
-- [NumPy](https://numpy.org/)
-- [SciPy](https://scipy.org/)
-- [tqdm](https://tqdm.github.io/) for visualizing fitting/training progress
-- [Daft](https://docs.daft-pgm.org/en/latest/) to plot graphical model components

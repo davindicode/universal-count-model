@@ -12,56 +12,23 @@ import torch.optim as optim
 from matplotlib import patches
 from torch.nn.parameter import Parameter
 
-sys.path.append("..")
-
-import neuroprob as mdl
+sys.path.append("../../lib/")
 import neuroprob.utils as utils
 
 
 brain_regions = {"ANT": 0, "PoS": 1, "CA1": 2, "mPFC": 3}
 
 mice_sessions = {
-    "Mouse12": [
-        "120806",
-        "120807",
-        "120809",
-        "120810",
-    ],  # '120808' is missing position files
-    "Mouse17": [
-        "130125",
-        "130128",
-        "130129",
-        "130130",
-        "130131",
-        "130201",
-        "130202",
-        "130203",
-        "130204",
-    ],
-    "Mouse20": ["130514", "130515", "130516", "130517", "130520"],
-    "Mouse24": ["131213", "131216", "131217", "131218"],
-    "Mouse25": [
-        "140123",
-        "140124",
-        "140128",
-        "140129",
-        "140130",
-        "140131",
-        "140203",
-        "140204",
-        "140205",
-        "140206",
-    ],
-    "Mouse28": ["140310", "140311", "140312", "140313", "140317", "140318"],
+    "Mouse28": ["140313"]
 }
 
 phase = "wake"
 datadir = "/scratches/ramanujan_2/dl543/HDC_PartIII"
 savedir = "/scratches/ramanujan_2/dl543/HDC_PartIII"
 
+
 if not os.path.exists(savedir):
     os.makedirs(savedir)
-
 
 for mouse_id in mice_sessions.keys():
     for session_id in mice_sessions[mouse_id]:
@@ -122,9 +89,10 @@ for mouse_id in mice_sessions.keys():
         # binning of covariates and analysis
         bins_hd = 60
         bin_hd = np.linspace(0, 2 * np.pi + 1e-3, bins_hd + 1)
-        hd_rate, hd_prob = utils.neural.IPP_model(
-            tbin, 0.0, (rhd_t,), (bin_hd,), r_t_spike, divide=True
+        hd_rate, hd_occup_time, hd_tot_spikes = utils.neural.occupancy_normalized_histogram(
+            tbin, 0.0, (rhd_t,), (bin_hd,), spiketimes=r_t_spike
         )
+        hd_prob = hd_occup_time / hd_occup_time.sum()
         hd_MI = utils.neural.spike_var_MI(hd_rate, hd_prob)
         filter_win = 41
         centre_win = filter_win // 2

@@ -86,7 +86,7 @@ class _dataset:
                 on_isl = False
 
         return island_start_ind, island_size
-
+    
     @staticmethod
     def stitch_nans(series, invalids, angular):
         """
@@ -115,6 +115,8 @@ class _dataset:
                     dseries += 2 * np.pi
 
             series[dinds + ind] = series[ind - 1] + dseries * (dinds + 1) / (size + 1)
+            
+        return series
 
 
 class peyrache_th1(_dataset):
@@ -317,14 +319,17 @@ class peyrache_th1(_dataset):
         hd_beh = ang[window, 1]
 
         # interpolator for invalid points
-        hd_nan = hd_beh == -1.0
+        hd_nan = (hd_beh == -1.0)
         invalids = self.true_subarrays(hd_nan)
-        self.stitch_nans(hd_beh, invalids, angular=True)
+        hd_beh = self.stitch_nans(hd_beh, invalids, angular=True)
+        #hdbeh_invalids = invalids
+        #omega_beh = (hd_beh[1:] - hd_beh[:-1]) / behav_tbin
+        #print(np.where(np.abs(omega_beh) > 20.))
 
-        xy_nan = x_beh != x_beh
+        xy_nan = (x_beh != x_beh)
         invalids = self.true_subarrays(xy_nan)
-        self.stitch_nans(x_beh, invalids, angular=False)
-        self.stitch_nans(y_beh, invalids, angular=False)
+        x_beh = self.stitch_nans(x_beh, invalids, angular=False)
+        y_beh = self.stitch_nans(y_beh, invalids, angular=False)
 
         # resample with spikes
         x_t = self.interpolator(use_times, x_beh)(synch_times)
@@ -355,6 +360,9 @@ class peyrache_th1(_dataset):
             "y": y_t,
             "hd": hd_t,
             "invalid_behaviour": invalid_behaviour,
+            #"omega": omega_beh, 
+            #"hd_beh": hd_beh,
+            #"hdbeh_invalids": hdbeh_invalids,
         }
 
         ### export ###
