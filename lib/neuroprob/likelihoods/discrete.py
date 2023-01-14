@@ -93,18 +93,6 @@ def gen_CMP(mu, nu, max_rejections=1000):
 
     return Y
 
-    """
-    if rate.max() == 0:
-        return np.zeros_like(rate)
-        
-    dt_ = np.sqrt(eps)/rate.max()
-    dilation = max(int(np.ceil(tbin/dt_)), 1) # number of counts to allow per original bin
-    if dilation > max_count:
-        raise ValueError('Maximum count ({}, requested {}) exceeded for Poisson process sampling'.format(max_count, dilation))
-    tbin_ = tbin / dilation
-    rate_ = np.repeat(rate, dilation, axis=-1) # repeat to allow IBP to sum to counts > 1
-    return gen_IBP(rate_*tbin_).reshape(*rate.shape[:-1], -1, dilation).sum(-1)
-    """
     
 
 class _count_model(base._likelihood):

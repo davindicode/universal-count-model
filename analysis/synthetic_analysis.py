@@ -346,6 +346,12 @@ glm.load_state_dict(checkpoint['model'])
 
 
 
+data_dict = {
+    use_neuron, max_count, tbin, rcov
+}
+
+
+
 
 # cross-validation of regression models
 beta = 0.0
@@ -454,6 +460,17 @@ xcvars = utils.signal.percentiles_from_samples(xcvar, percentiles=[0.05, 0.5, 0.
 varlower, varmean, varupper = [cs_.cpu().numpy() for cs_ in xcvars]
 
 
+ 
+
+regression_dict = {
+    covariates, P_rg, grate, gdisp, gFF, gvar, hd, ref_prob, clower, cmean, cupper, 
+    avglower, avgmean, avgupper, fflower, ffmean, ffupper, varlower, varmean, varupper, 
+    RG_cv_ll, 
+}
+
+
+
+
 
 # KS framework
 Qq_rg = []
@@ -510,6 +527,14 @@ q_DS_rg = np.array(q_DS_rg).reshape(len(CV), len(M), -1)
 T_DS_rg = np.array(T_DS_rg).reshape(len(CV), len(M), -1)
 T_KS_rg = np.array(T_KS_rg).reshape(len(CV), len(M), -1)
 
+
+   
+dispersion_dict = {
+    q_DS_rg, T_DS_rg, T_KS_rg, Qq_rg, Zz_rg, sign_DS, sign_KS, 
+}
+    
+    
+   
 
 
 # aligning trajectory and computing RMS for different models
@@ -632,22 +657,7 @@ for mode in modes[-2:]:
     comp_ff.append([cs_.cpu().numpy() for cs_ in ffs])
     
     
-    
-dispersion_dict = {
-    q_DS_rg, T_DS_rg, T_KS_rg, Qq_rg, Zz_rg, sign_DS, sign_KS, 
-}
-    
-    
-    
 
-    
-
-
-regression_dict = {
-    covariates, P_rg, grate, gdisp, gFF, gvar, hd, ref_prob, clower, cmean, cupper, 
-    avglower, avgmean, avgupper, fflower, ffmean, ffupper, varlower, varmean, varupper, 
-    RG_cv_ll, 
-}
 
 
 latent_dict = {
@@ -656,10 +666,6 @@ latent_dict = {
 }
 
 
-
-data_dict = {
-    use_neuron, max_count, tbin, rcov
-}
 
 
 

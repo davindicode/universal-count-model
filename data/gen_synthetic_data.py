@@ -1,3 +1,4 @@
+import argparse
 import sys
 
 import matplotlib.pyplot as plt
@@ -284,6 +285,24 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
 
 ### main ###
 def main():
+    ### parser ###
+    parser = argparse.ArgumentParser(usage="%(prog)s [OPTION] [FILE]...", 
+                                     description="Generate synthetic count data.")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
+    )
+
+    parser.add_argument("--seed", default=123, type=int)
+#     parser.add_argument(
+#         "--stage_indicator", dest="stage_indicator", action="store_true"
+#     )
+#     parser.set_defaults(stage_indicator=False)
+
+    args = parser.parse_args()
+    
+    # seed
+    np.random.seed(args.seed)
+    
     # Gaussian von Mises bump head direction model
     sample_bin = 0.1  # 100 ms
     track_samples = 10000

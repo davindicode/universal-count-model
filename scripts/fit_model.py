@@ -1,11 +1,11 @@
-import sys
-
-import models
 import numpy as np
 
 import torch
 import torch.nn as nn
 
+import template
+
+import sys
 sys.path.append("../lib/")
 import neuroprob as nprb
 from neuroprob import utils
@@ -19,13 +19,13 @@ def get_dataset(data_type, bin_size, single_spikes, path):
         metainfo = {}
 
         if data_type == "hCMP":
-            syn_data = np.load(datadir + "/hCMP_HDC.npz")
+            syn_data = np.load(path + "hCMP_HDC.npz")
             rcov = {
                 "hd": syn_data["rhd_t"],
             }
 
         elif data_type == "IP":
-            syn_data = np.load(datadir + "/IP_HDC.npz")
+            syn_data = np.load(path + "IP_HDC.npz")
             rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
 
         rc_t = syn_data["spktrain"]
@@ -115,10 +115,9 @@ class FFNN_model(nn.Module):
     Multi-layer perceptron class
     """
 
-    def __init__(self, layers, angle_dims, euclid_dims, hist_len, out_dims):
+    def __init__(self, layers, angle_dims, euclid_dims, out_dims):
         """
-        Assumes angular dimensions to be ordered first in the input of shape dimensionsxhist_len.
-        dim_fill is hist_len or hist_len*neurons when parallel neurons
+        Assumes angular dimensions to be ordered first in the input of shape (2*dimensions,)
         """
         super().__init__()
         self.angle_dims = angle_dims
@@ -225,12 +224,12 @@ def enc_used(model_dict, covariates, learn_mean):
             kernel_tuples += [("SE", "euclid", torch.tensor(euclid_ls))]
 
         # z
-        latent_k, latent_u = models.latent_kernel(z_mode, num_induc, out_dims)
+        latent_k, latent_u = template.latent_kernel(z_mode, num_induc, out_dims)
         kernel_tuples += latent_k
         ind_list += latent_u
 
         # objects
-        kernelobj, constraints = models.create_kernel(kernel_tuples, "exp", tensor_type)
+        kernelobj, constraints = template.create_kernel(kernel_tuples, "exp", tensor_type)
 
         Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
         inpd = Xu.shape[-1]
@@ -252,10 +251,9 @@ def enc_used(model_dict, covariates, learn_mean):
 
     elif map_mode_comps[0] == "ffnn":  # feedforward neural network mapping
         rate_model = FFNN_params(in_dims, enc_layers, angle_dims, inner_dims, inv_link)
-        hist_len = 1
 
         mu_ANN = FFNN_model(
-            enc_layers, angle_dims, tot_dims - angle_dims, hist_len, neurons
+            enc_layers, angle_dims, tot_dims - angle_dims, neurons
         )
         mapping = mdl.parametrics.FFNN(
             tot_dims, neurons, inv_link, mu_ANN, sigma_ANN=None, tens_type=torch.float
@@ -269,7 +267,7 @@ def enc_used(model_dict, covariates, learn_mean):
 
 ### main ###
 def main():
-    parser = models.standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
+    parser = template.standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
     parser.add_argument("--data_path", action="store", type=str)
     parser.add_argument("--data_type", action="store", type=str)
 
@@ -280,7 +278,7 @@ def main():
         args.data_type, args.bin_size, args.single_spikes, args.data_path
     )
 
-    models.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
+    template.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
 
 
 if __name__ == "__main__":

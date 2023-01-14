@@ -347,7 +347,7 @@ def inputs_used(model_dict, covariates, batch_info):
     return input_data, d_x, d_z
 
 
-def get_likelihood(model_dict, enc_used):
+def get_likelihood(model_dict, cov, enc_used):
     """
     Create the likelihood object.
     """
@@ -439,10 +439,8 @@ def gen_name(model_dict, delay, fold):
 
     name = model_dict[
         "model_name"
-    ] + "_{}_{}H{}_{}_X[{}]_Z[{}]_{}K{}_{}d{}_{}f{}".format(
+    ] + "_{}_{}_X[{}]_Z[{}]_{}K{}_{}d{}_{}f{}".format(
         model_dict["ll_mode"],
-        model_dict["filt_mode"],
-        model_dict["hist_len"],
         model_dict["map_mode"],
         model_dict["x_mode"],
         model_dict["z_mode"],
@@ -495,17 +493,15 @@ def standard_parser(usage, description):
     parser.add_argument("--margin_epochs", default=100, type=int)
 
     parser.add_argument("--likelihood", action="store", type=str)
-    parser.add_argument("--filter", default="", action="store", type=str)
     parser.add_argument("--mapping", default="", action="store", type=str)
     parser.add_argument("--x_mode", default="", action="store", type=str)
     parser.add_argument("--z_mode", default="", action="store", type=str)
     parser.add_argument("--delays", nargs="+", default=[0], type=int)
-    parser.add_argument("--hist_len", default=0, type=int)
     return parser
 
 
 def preprocess_data(
-    dataset_dict, folds, delays, cv_runs, batchsize, hist_len, has_latent=False
+    dataset_dict, folds, delays, cv_runs, batchsize, has_latent=False
 ):
     """
     Returns delay shifted cross-validated data for training
@@ -526,8 +522,6 @@ def preprocess_data(
     if trial_sizes is not None:
         if delays != [0]:
             raise ValueError("Delays not supported in appended trials")
-        if hist_len > 0:
-            raise ValueError("Coupling filter not supported in appended trials")
 
     if delays != [0]:
         if min(delays) > 0:
@@ -545,8 +539,8 @@ def preprocess_data(
         dd = [0]
 
     # history of spike train filter
-    rcov = {n: rc[hist_len:] for n, rc in rcov.items()}
-    resamples -= hist_len
+    #rcov = {n: rc[hist_len:] for n, rc in rcov.items()}
+    #resamples -= hist_len
 
     D = -D_max + D_min  # total delay steps - 1
     for delay in dd:
@@ -566,7 +560,7 @@ def preprocess_data(
             )
         else:
             cv_sets, vstart = utils.neural.spiketrain_CV(
-                folds, rc_t_, resamples_, rcov_, spk_hist_len=hist_len
+                folds, rc_t_, resamples_, rcov_, spk_hist_len=0
             )
 
         for kcv in cv_runs:
@@ -649,10 +643,6 @@ def setup_model(data_tuple, model_dict, enc_used):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # checks
-    if filt_mode == "" and model_dict["hist_len"] > 0:
-        raise ValueError
-
     # inputs
     input_data, d_x, d_z = inputs_used(model_dict, cov, batch_info)
     model_dict["map_xdims"], model_dict["map_zdims"] = d_x, d_z
@@ -671,10 +661,7 @@ def setup_model(data_tuple, model_dict, enc_used):
     mapping = enc_used(model_dict, cov, learn_mean)
 
     # likelihood
-    likelihood = get_likelihood(model_dict, enc_used)
-    if filt_mode != "":
-        filterobj = coupling_filter(model_dict)
-        likelihood = nprb.likelihoods.filters.filtered_likelihood(likelihood, filterobj)
+    likelihood = get_likelihood(model_dict, cov, enc_used)
     likelihood.set_Y(torch.from_numpy(spktrain), batch_info=batch_info)
 
     full = nprb.inference.VI_optimized(input_group, mapping, likelihood)
@@ -694,11 +681,9 @@ def extract_model_dict(config, dataset_dict):
 
     # mode
     ll_mode = config.likelihood
-    filt_mode = config.filter
     map_mode = config.mapping
     x_mode = config.x_mode
     z_mode = config.z_mode
-    hist_len = config.hist_len
 
     model_dict = {
         "ll_mode": ll_mode,
@@ -706,7 +691,6 @@ def extract_model_dict(config, dataset_dict):
         "map_mode": map_mode,
         "x_mode": x_mode,
         "z_mode": z_mode,
-        "hist_len": hist_len,
         "folds": folds,
         "delays": delays,
         "neurons": dataset_dict["neurons"],
@@ -720,7 +704,7 @@ def extract_model_dict(config, dataset_dict):
     return model_dict
 
 
-def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
+def train_model(dev, parser_args, dataset_dict, enc_used):
     """
     General training loop
 
@@ -730,6 +714,7 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
     def enc_used(model_dict, covariates, inner_dims):
         Function for generating encoding model
     """
+    checkpoint_dir = parser_args.checkpoint_dir
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
 
@@ -739,7 +724,6 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
     delays = parser_args.delays
     cv_runs = parser_args.cv
     batchsize = parser_args.batch_size
-    hist_len = parser_args.hist_len
     z_mode = parser_args.z_mode
 
     model_dict = extract_model_dict(parser_args, dataset_dict)
@@ -747,7 +731,7 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
     # training
     has_latent = False if z_mode == "" else True
     preprocessed = preprocess_data(
-        dataset_dict, folds, delays, cv_runs, batchsize, hist_len, has_latent
+        dataset_dict, folds, delays, cv_runs, batchsize, has_latent
     )
     for cvdata in preprocessed:
         fitdata = (
@@ -808,21 +792,18 @@ def train_model(dev, parser_args, dataset_dict, enc_used, checkpoint_dir):
                     
                     # save model
                     torch.save(
-                        {"full_model": full_model.state_dict()},
-                        checkpoint_dir + model_name + ".pt",
-                    )
-
-                    with open(checkpoint_dir + model_name + "_result.p", "wb") as f:
-                        results = {
+                        {
+                            "full_model": full_model.state_dict(), 
                             "training_loss": losses,
                             "seed": seed,
                             "delay": cvdata["delay"],
                             "cv_run": cvdata["fold"],
                             "config": parser_args,
-                        }
-                        pickle.dump(results, f)
+                        }, 
+                        checkpoint_dir + model_name + ".pt",
+                    )
 
-            except RuntimeError as e:
+            except (ValueError, RuntimeError) as e:
                 print(e)
 
 
@@ -852,7 +833,6 @@ def load_model(
         [delay],
         [cv_run],
         batch_info,
-        model_dict["hist_len"],
         has_latent,
     )[0]
 

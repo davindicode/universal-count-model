@@ -12,7 +12,7 @@ import torch.optim as optim
 from matplotlib import patches
 from torch.nn.parameter import Parameter
 
-sys.path.append("../../lib/")
+sys.path.append("../lib/")
 import neuroprob.utils as utils
 
 

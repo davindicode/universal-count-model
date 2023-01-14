@@ -13,3 +13,4 @@ We load the dataset for one session from the original files downloaded from [CRC
     Approx depth from surface: 2.56mm
 
 
+Running `gen_synthetic_data.py` overwrites the previous files.

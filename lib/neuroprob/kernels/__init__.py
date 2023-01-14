@@ -5,7 +5,6 @@ from . import mean_functions
 from .kernel import (
     Combination,
     Constant,
-    DecayingSquaredExponential,
     DeepKernel,
     DotProduct,
     Exponential,
@@ -15,7 +14,6 @@ from .kernel import (
     Polynomial,
     Product,
     RationalQuadratic,
-    SpectralMixture,
     SquaredExponential,
     Sum,
 )
