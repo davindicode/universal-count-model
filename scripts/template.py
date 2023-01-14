@@ -178,77 +178,6 @@ def latent_kernel(z_mode, num_induc, out_dims):
 
 
 ### model components ###
-def get_basis(basis_mode="el"):
-
-    if basis_mode == "id":
-        basis = (lambda x: x,)
-
-    elif basis_mode == "el":  # element-wise exp-linear
-        basis = (lambda x: x, lambda x: torch.exp(x))
-
-    elif basis_mode == "eq":  # element-wise exp-quadratic
-        basis = (lambda x: x, lambda x: x**2, lambda x: torch.exp(x))
-
-    elif basis_mode == "ec":  # element-wise exp-cubic
-        basis = (
-            lambda x: x,
-            lambda x: x**2,
-            lambda x: x**3,
-            lambda x: torch.exp(x),
-        )
-
-    elif basis_mode == "qd":  # exp and full quadratic
-
-        def mix(x):
-            C = x.shape[-1]
-            out = torch.empty((*x.shape[:-1], C * (C - 1) // 2), dtype=x.dtype).to(
-                x.device
-            )
-            k = 0
-            for c in range(1, C):
-                for c_ in range(c):
-                    out[..., k] = x[..., c] * x[..., c_]
-                    k += 1
-
-            return out  # shape (..., C*(C-1)/2)
-
-        basis = (
-            lambda x: x,
-            lambda x: x**2,
-            lambda x: torch.exp(x),
-            lambda x: mix(x),
-        )
-
-    else:
-        raise ValueError("Invalid basis expansion")
-
-    return basis
-
-
-class net(nn.Module):
-    def __init__(self, C, basis, max_count, channels, shared_W=False):
-        super().__init__()
-        self.basis = basis
-        self.C = C
-        expand_C = torch.cat(
-            [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
-        ).shape[-1]
-
-        mnet = nprb.nn.Parallel_MLP(
-            [], expand_C, (max_count + 1), channels, shared_W=shared_W, out=None
-        )  # single linear mapping
-        self.add_module("mnet", mnet)
-
-    def forward(self, input, neuron):
-        """
-        :param torch.tensor input: input of shape (samplesxtime, in_dimsxchannels)
-        """
-        input = input.view(input.shape[0], -1, self.C)
-        input = torch.cat([f_(input) for f_ in self.basis], dim=-1)
-        out = self.mnet(input, neuron)
-        return out.view(out.shape[0], -1)  # t, NxK
-
-
 def latent_objects(z_mode, d_x, timesamples, tensor_type):
     """
     Create latent state prior and variational distribution
@@ -363,7 +292,7 @@ def get_likelihood(model_dict, cov, enc_used):
     inner_dims = model_dict["map_outdims"]
 
     if ll_mode[0] == "h":
-        hgp = enc_used(model_dict, cov, learn_mean=False)
+        hgp = enc_used(model_dict, cov, learn_mean=True)
 
     if ll_mode_comps[0] == "U":
         inv_link = "identity"
@@ -422,10 +351,9 @@ def get_likelihood(model_dict, cov, enc_used):
         )
 
     elif ll_mode_comps[0] == "U":
-        basis = get_basis(ll_mode_comps[1])
-        mapping_net = net(C, basis, max_count, neurons, False)
+        basis_mode = ll_mode_comps[1]
         likelihood = nprb.likelihoods.Universal(
-            neurons, C, inv_link, max_count, mapping_net, tensor_type=tensor_type
+            neurons, C, basis_mode, inv_link, max_count, tensor_type=tensor_type
         )
 
     else:
@@ -657,7 +585,7 @@ def setup_model(data_tuple, model_dict, enc_used):
         neurons * C
     )  # number of output dimensions of the input_mapping
 
-    learn_mean = ll_mode_comps[0] != "U"
+    learn_mean = (ll_mode_comps[0] != "U")
     mapping = enc_used(model_dict, cov, learn_mean)
 
     # likelihood

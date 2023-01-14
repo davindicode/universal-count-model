@@ -213,13 +213,22 @@ class Universal(base._likelihood):
     """
 
     def __init__(
-        self, neurons, C, inv_link, max_count, mapping_net, tensor_type=torch.float
+        self, neurons, C, basis_mode, inv_link, max_count, shared_W=False, tensor_type=torch.float
     ):
         super().__init__(1.0, neurons * C, neurons, inv_link, tensor_type)  # dummy tbin
         self.K = max_count
         self.C = C
         self.neurons = neurons
         self.lsoftm = torch.nn.LogSoftmax(dim=-1)
+        
+        self.basis = self.get_basis(basis_mode)
+        expand_C = torch.cat(
+            [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
+        ).shape[-1]  # size of expanded vector
+
+        mapping_net = nprb.nn.Parallel_MLP(
+            [], expand_C, (max_count + 1), channels, shared_W=shared_W, out=None
+        )  # single linear mapping
         self.add_module("mapping_net", mapping_net)  # maps from NxC to NxK
 
     def set_Y(self, spikes, batch_info):
@@ -264,7 +273,53 @@ class Universal(base._likelihood):
         g = onehot_.shape[0]
         onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
         return onehot_.view(*onehot.shape)
+    
+    def get_basis(basis_mode="el"):
+        
+        if basis_mode == "id":
+            basis = (lambda x: x,)
 
+        elif basis_mode == "el":  # element-wise exp-linear
+            basis = (lambda x: x, lambda x: torch.exp(x))
+
+        elif basis_mode == "eq":  # element-wise exp-quadratic
+            basis = (lambda x: x, lambda x: x**2, lambda x: torch.exp(x))
+
+        elif basis_mode == "ec":  # element-wise exp-cubic
+            basis = (
+                lambda x: x,
+                lambda x: x**2,
+                lambda x: x**3,
+                lambda x: torch.exp(x),
+            )
+
+        elif basis_mode == "qd":  # exp and full quadratic
+
+            def mix(x):
+                C = x.shape[-1]
+                out = torch.empty((*x.shape[:-1], C * (C - 1) // 2), dtype=x.dtype).to(
+                    x.device
+                )
+                k = 0
+                for c in range(1, C):
+                    for c_ in range(c):
+                        out[..., k] = x[..., c] * x[..., c_]
+                        k += 1
+
+                return out  # shape (..., C*(C-1)/2)
+
+            basis = (
+                lambda x: x,
+                lambda x: x**2,
+                lambda x: torch.exp(x),
+                lambda x: mix(x),
+            )
+
+        else:
+            raise ValueError("Invalid basis expansion")
+
+        return basis
+        
     def get_logp(self, F_mu, neuron):
         """
         Compute count probabilities from the rate model output.
@@ -275,9 +330,12 @@ class Universal(base._likelihood):
         """
         T = F_mu.shape[-1]
         samples = F_mu.shape[0]
-        a = self.mapping_net(
-            F_mu.permute(0, 2, 1).reshape(samples * T, -1), neuron
-        )  # samplesxtime, NxK
+        
+        inps = F_mu.permute(0, 2, 1).reshape(samples * T, -1)  # (samplesxtime, in_dimsxchannels)
+        inps = inps.view(inps.shape[0], -1, self.C)
+        inps = torch.cat([f_(inps) for f_ in self.basis], dim=-1)
+        a = self.mapping_net(inps, neuron).view(out.shape[0], -1)  # # samplesxtime, NxK
+        
         log_probs = self.lsoftm(a.view(samples, T, -1, self.K + 1).permute(0, 2, 1, 3))
         return log_probs
 
