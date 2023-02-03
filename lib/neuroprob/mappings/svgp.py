@@ -136,7 +136,7 @@ class inducing_points(nn.Module):
     """
 
     def __init__(
-        self, out_dims, inducing_points, constraints, MAP=False, tensor_type=torch.float
+        self, out_dims, inducing_points, MAP=False, tensor_type=torch.float
     ):
         """
         :param list constraints: list of tupes (dl, du, topo) where dl:du dimensions are constrained on topology topo
@@ -147,7 +147,6 @@ class inducing_points(nn.Module):
         _, self.n_ind, self.input_dims = self.Xu.shape
 
         self.out_dims = out_dims
-        self.constraints = constraints
 
         u_loc = self.Xu.new_zeros((self.out_dims, self.n_ind))
         self.u_loc = Parameter(u_loc)

@@ -26,7 +26,6 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
     track_dims = 0
     kernelobj = 0
 
-    constraints = []
     for k, k_tuple in enumerate(kernel_tuples):
 
         if k_tuple[0] is not None:
@@ -38,11 +37,6 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
                 kernel_type = k_tuple[0]
                 topology = k_tuple[1]
                 lengthscales = k_tuple[2]
-
-                if topology == "sphere":
-                    _constraints += [
-                        (track_dims, track_dims + len(lengthscales), "sphere"),
-                    ]
 
                 act = []
                 for _ in lengthscales:
@@ -144,7 +138,7 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
         else:
             track_dims += 1
 
-    return kernelobj, constraints
+    return kernelobj
 
 
 def latent_kernel(z_mode, num_induc, out_dims):
