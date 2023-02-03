@@ -13,7 +13,6 @@ from . import (
     kernels,
     likelihoods,
     mappings,
-    nn,
     utils,
 )
 

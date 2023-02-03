@@ -8,6 +8,15 @@ from torch.nn.parameter import Parameter
 
 
 ### utilities
+def safe_sqrt(x, eps=1e-12):
+    """
+    A convenient function to avoid the NaN gradient issue of :func:`torch.sqrt`
+    at 0.
+    """
+    # Ref: https://github.com/pytorch/pytorch/issues/2421
+    return (x + eps).sqrt()
+
+
 def linear_regression(A, B):
     """
     linear regression with R squared
@@ -200,21 +209,92 @@ def circ_lin_regression(theta, x, dev="cpu", iters=1000, lr=1e-2):
     return 2 * np.pi * x * a_ + shift_, a_, shift_, losses
 
 
-# SFA
-def quadratic_expansion(x):
+# correlations
+def corr_lin_lin(x, y):
+    r"""
+    Linear-linear correlation coefficient.
+    
+    .. math::
+            [f, u] &\sim \mathcal{GP}(0, k([X, X_u], [X, X_u])),\\
+            y & \sim p(y) = p(y \mid f) p(f)
+    
+    
+    :param numpy.array x: input array x of shape (samples)
     """
-    Example :math:`z(x_1, x_2) = (x_1^2, x_1x_2, x_2^2)`
-    Cubic or higher polynomial expansions can be constructed by iterating this function.
+    return ((x - x.mean()) * (y - y.mean())).mean() / (x.std() * y.std())
 
-    :param torch.tensor x: input time series of shape (dims, timesteps)
-    :returns: tensor of z with shape (dims', timesteps)
-    :rtype: torch.tensor
+
+def corr_lin_circ(x, theta):
+    r"""
+    Linear-circular correlation coefficient, using embedding approach [1].
+    
+    .. math::
+            [f, u] &\sim \mathcal{GP}(0, k([X, X_u], [X, X_u])),\\
+            y & \sim p(y) = p(y \mid f) p(f)
+    
+    :param numpy.array x: input array x of shape (samples,)
+    :param numpy.array theta: input array theta of shape (samples,)
+    
+    References:
+    
+    [1] Mardia (1979) and Johnson and Wehrly (1977)
+    
     """
-    app = []
-    for d in range(x.shape[0]):
-        app.append(x[d : d + 1, :] * x[d:, :])
+    s = np.sin(theta)
+    c = np.cos(theta)
+    r_xs = corr_lin_lin(x, s)
+    r_xc = corr_lin_lin(x, c)
+    r_cs = corr_lin_lin(c, s)
+    return np.sqrt((r_xs**2 + r_xc**2 - 2 * r_xs * r_xc * r_cs) / (1 - r_cs**2))
 
-    return torch.cat(tuple(app), dim=0)
+
+def corr_lin_circ_Kempter(x, theta, a):
+    """
+    Circular-linear correlation coefficient as defined by the following papers:
+
+    :param numpy.array x: input array x of shape (samples,)
+    :param numpy.array theta: input array theta of shape (samples,)
+    :param float a: slope divided by 2pi
+
+    References:
+
+    [1] Kempter et al. (2012) Note: phi and theta are reversed
+    [2] Jammalamadaka and Sengupta (2001)
+    """
+    theta_bar = np.arctan2(np.sum(np.sin(theta)), np.sum(np.cos(theta)))
+    phi = 2 * np.pi * a * x % (2 * np.pi)
+    phi_bar = np.arctan2(np.sum(np.sin(phi)), np.sum(np.cos(phi)))
+    num = np.sum(np.sin(theta - theta_bar) * np.sin(phi - phi_bar))
+    den = np.sqrt(
+        np.sum(np.sin(theta - theta_bar) ** 2) * np.sum(np.sin(phi - phi_bar) ** 2)
+    )
+
+    return num / den
+
+
+def corr_circ_circ(x, y):
+    r"""
+    Circular-circular correlation coefficient [1].
+    
+    .. math::
+            [f, u] &\sim \mathcal{GP}(0, k([X, X_u], [X, X_u])),\\
+            y & \sim p(y) = p(y \mid f) p(f)
+    
+    :param numpy.array x: input array x of shape (samples,)
+    :param numpy.array y: input array y of shape (samples,)
+    
+    References:
+    
+    [1] `A Correlation Coefficient for Circular Data`, 
+    N. I. Fisher and A. J. Lee
+    
+    """
+    x_ = np.angle(np.exp(1j * x).mean())
+    y_ = np.angle(np.exp(1j * y).mean())
+    s_x = np.sin(x - x_)
+    s_y = np.sin(y - y_)
+    return (s_x * s_y).mean() / (np.sqrt((s_x**2).mean() * (s_y**2).mean()))
+
 
 
 # FFT filter

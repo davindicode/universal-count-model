@@ -4,139 +4,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
+import torch.distributions as dist
 
-from .. import base, distributions
-
-
-class histogram(base._input_mapping):
-    """
-    Histogram rate model based on GLM framework.
-    Has an identity link function with positivity constraint on the weights.
-    Only supports regressor mode.
-    """
-
-    def __init__(
-        self,
-        bins_cov,
-        out_dims,
-        ini_rate=1.0,
-        alpha=None,
-        tensor_type=torch.float,
-        active_dims=None,
-    ):
-        """
-        The initial rate should not be zero, as that gives no gradient in the Poisson
-        likelihood case
-
-        :param tuple bins_cov: tuple of bin objects (np.linspace)
-        :param int neurons: number of neurons in total
-        :param float ini_rate: initial rate array
-        :param float alpha: smoothness prior hyperparameter, None means no prior
-        """
-        super().__init__(len(bins_cov), out_dims, tensor_type, active_dims)
-        ini = torch.tensor([ini_rate]).view(-1, *np.ones(len(bins_cov)).astype(int))
-        self.register_parameter(
-            "w",
-            Parameter(
-                ini
-                * torch.ones(
-                    (out_dims,) + tuple(len(bins) - 1 for bins in bins_cov),
-                    dtype=self.tensor_type,
-                )
-            ),
-        )
-        if alpha is not None:
-            self.register_buffer("alpha", torch.tensor(alpha, dtype=self.tensor_type))
-        else:
-            self.alpha = alpha
-        self.bins_cov = bins_cov  # use PyTorch for integer indexing
-
-    def set_params(self, w=None):
-        if w is not None:
-            self.w.data = torch.tensor(w, device=self.w.device, dtype=self.tensor_type)
-
-    def compute_F(self, XZ):
-        XZ = self._XZ(XZ)
-        samples = XZ.shape[0]
-
-        tg = []
-        for k in range(self.input_dims):
-            tg.append(torch.bucketize(XZ[..., k], self.bins_cov[k], right=True) - 1)
-
-        XZ_ind = (
-            torch.arange(samples)[:, None, None].expand(
-                -1, self.out_dims, len(tg[0][b])
-            ),
-            torch.arange(self.out_dims)[None, :, None].expand(
-                samples, -1, len(tg[0][b])
-            ),
-        ) + tuple(tg_[b][:, None, :].expand(samples, self.out_dims, -1) for tg_ in tg)
-
-        return self.w[XZ_ind], 0
-
-    def sample_F(self, XZ):
-        return self.compute_F(XZ)[0]
-
-    def KL_prior(self, importance_weighted):
-        if self.alpha is None:
-            return super().KL_prior(importance_weighted)
-
-        smooth_prior = (
-            self.alpha[0] * (self.w[:, 1:, ...] - self.w[:, :-1, ...]).pow(2).sum()
-            + self.alpha[1] * (self.w[:, :, 1:, :] - self.w[:, :, :-1, :]).pow(2).sum()
-            + self.alpha[2] * (self.w[:, ..., 1:] - self.w[:, ..., :-1]).pow(2).sum()
-        )
-        return -smooth_prior
-
-    def constrain(self):
-        self.w.data = torch.clamp(self.w.data, min=0)
-
-    def set_unvisited_bins(self, ini_rate=1.0, unvis=np.nan):
-        """
-        Set the bins that have not been updated to unvisited value unvis.
-        """
-        self.w.data[self.w.data == ini_rate] = torch.tensor(unvis, device=self.w.device)
-
-
-class spline(base._input_mapping):
-    """
-    Spline based mapping.
-    """
-
-    def __init__(
-        self,
-        bins_cov,
-        out_dims,
-        ini_rate=1.0,
-        alpha=None,
-        tensor_type=torch.float,
-        active_dims=None,
-    ):
-        """
-        The initial rate should not be zero, as that gives no gradient in the Poisson
-        likelihood case
-
-        :param tuple bins_cov: tuple of bin objects (np.linspace)
-        :param int neurons: number of neurons in total
-        :param float ini_rate: initial rate array
-        :param float alpha: smoothness prior hyperparameter, None means no prior
-        """
-        super().__init__(len(bins_cov), out_dims, tensor_type, active_dims)
-
-
-from numbers import Number
-
-import numpy as np
-import torch
-import torch.nn as nn
-from torch.nn.parameter import Parameter
-
-from .. import base, distributions
+from . import base
 from ..utils.signal import eye_like
 
 
 # linear algebra computations
-# @torch.jit.script
 def p_F_U(
     X,
     X_u,
@@ -255,43 +129,11 @@ def p_F_U(
     return loc, cov, Lff
 
 
-### GP models ###
-class _GP(base._input_mapping):
-    """ """
-
-    def __init__(
-        self, input_dims, out_dims, mean, learn_mean, tensor_type, active_dims
-    ):
-        super().__init__(input_dims, out_dims, tensor_type, active_dims)
-
-        ### GP mean ###
-        if isinstance(mean, Number):
-            if learn_mean:
-                self.mean = Parameter(torch.tensor(mean, dtype=self.tensor_type))
-            else:
-                self.register_buffer("mean", torch.tensor(mean, dtype=self.tensor_type))
-            self.mean_function = lambda x: self.mean
-
-        elif isinstance(mean, torch.Tensor):
-            if mean.shape != torch.Size([out_dims]):
-                raise ValueError("Mean dimensions do not match output dimensions")
-            if learn_mean:
-                self.mean = Parameter(mean[None, :, None].type(self.tensor_type))
-            else:
-                self.register_buffer("mean", mean[None, :, None].type(self.tensor_type))
-            self.mean_function = lambda x: self.mean
-
-        elif isinstance(mean, nn.Module):
-            self.add_module("mean_function", mean)
-            if learn_mean is False:
-                self.mean_function.requires_grad = False
-
-        else:
-            raise NotImplementedError("Mean type is not supported.")
-
 
 class inducing_points(nn.Module):
-    """ """
+    """
+    Class to hold inducing points
+    """
 
     def __init__(
         self, out_dims, inducing_points, constraints, MAP=False, tensor_type=torch.float
@@ -318,12 +160,6 @@ class inducing_points(nn.Module):
             self.u_scale_tril = Parameter(u_scale_tril)
 
     def constrain(self):
-        # constrain topological inducing points of sphere
-        for dl, du, topo in self.constraints:
-            if topo == "sphere":
-                L2 = self.Xu[..., dl:du].data.norm(2, -1)[..., None]
-                self.Xu[..., k : k + n].data /= L2
-
         if (
             self.u_scale_tril is not None
         ):  # constrain K to be PSD, L diagonals > 0 as needed for det K
@@ -334,7 +170,7 @@ class inducing_points(nn.Module):
             )
 
 
-class SVGP(_GP):
+class SVGP(base._input_mapping):
     """
     Sparse Variational Gaussian Process model with covariates for regression and latent variables.
     """
@@ -382,13 +218,37 @@ class SVGP(_GP):
         :param Number/torch.Tensor/nn.Module mean: initial GP mean of shape (samples, neurons, timesteps), or if nn.Module 
                                         learnable function to compute the mean given input
         """
-        super().__init__(
-            input_dims, out_dims, mean, learn_mean, tensor_type, active_dims
-        )
+        super().__init__(input_dims, out_dims, tensor_type, active_dims)
+
         self.jitter = jitter
         self.whiten = whiten
         self.kernel_regression = kernel_regression
+        
+        ### GP mean ###
+        if isinstance(mean, Number):
+            if learn_mean:
+                self.mean = Parameter(torch.tensor(mean, dtype=self.tensor_type))
+            else:
+                self.register_buffer("mean", torch.tensor(mean, dtype=self.tensor_type))
+            self.mean_function = lambda x: self.mean
 
+        elif isinstance(mean, torch.Tensor):
+            if mean.shape != torch.Size([out_dims]):
+                raise ValueError("Mean dimensions do not match output dimensions")
+            if learn_mean:
+                self.mean = Parameter(mean[None, :, None].type(self.tensor_type))
+            else:
+                self.register_buffer("mean", mean[None, :, None].type(self.tensor_type))
+            self.mean_function = lambda x: self.mean
+
+        elif isinstance(mean, nn.Module):
+            self.add_module("mean_function", mean)
+            if learn_mean is False:
+                self.mean_function.requires_grad = False
+
+        else:
+            raise NotImplementedError("Mean type is not supported.")
+            
         ### kernel ###
         if kernel.input_dims != self.input_dims:
             ValueError("Kernel dimensions do not match expected input dimensions")
@@ -419,9 +279,9 @@ class SVGP(_GP):
                 identity = eye_like(self.induc_pts.Xu, zero_loc.shape[1])[
                     None, ...
                 ].repeat(zero_loc.shape[0], 1, 1)
-                p = distributions.Rn_MVN(zero_loc, scale_tril=identity)
+                p = dist.MultivariateNormal(zero_loc, scale_tril=identity)
             else:  # loc (N, N_u), cov (N, N_u, N_u)
-                p = distributions.Rn_MVN(zero_loc, scale_tril=self.Luu)
+                p = dist.MultivariateNormal(zero_loc, scale_tril=self.Luu)
 
             return -p.log_prob(self.induc_pts.u_loc).sum()
 
@@ -431,18 +291,18 @@ class SVGP(_GP):
                 identity = eye_like(self.induc_pts.u_loc, zero_loc.shape[1])[
                     None, ...
                 ].repeat(zero_loc.shape[0], 1, 1)
-                p = distributions.Rn_MVN(
+                p = dist.MultivariateNormal(
                     zero_loc, scale_tril=identity
                 )  # .to_event(zero_loc.dim() - 1)
             else:  # loc (N, N_u), cov (N, N_u, N_u)
-                p = distributions.Rn_MVN(
+                p = dist.MultivariateNormal(
                     zero_loc, scale_tril=self.Luu
                 )  # .to_event(zero_loc.dim() - 1)
 
-            q = distributions.Rn_MVN(
+            q = dist.MultivariateNormal(
                 self.induc_pts.u_loc, scale_tril=self.induc_pts.u_scale_tril
             )  # .to_event(self.u_loc.dim()-1)
-            kl = torch.distributions.kl.kl_divergence(q, p).sum()  # sum over neurons
+            kl = dist.kl.kl_divergence(q, p).sum()  # sum over neurons
             if torch.isnan(kl).any():
                 kl = 0.0
                 print("Warning: sparse GP prior is NaN, ignoring prior term.")

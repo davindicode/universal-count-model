@@ -251,3 +251,93 @@ def LVM_pred_ll(
         )
 
     return np.array(pll).mean(), losses
+
+
+
+# metrics
+def metric(x, y, topology="euclid"):
+    """
+    Returns the geodesic displacement between x and y, (x-y).
+
+    :param torch.tensor x: input x of any shape
+    :param torch.tensor y: input y of same shape as x
+    :returns: x-y tensor of geodesic distances
+    :rtype: torch.tensor
+    """
+    if topology == "euclid":
+        xy = x - y
+    elif topology == "torus":
+        xy = (x - y) % (2 * np.pi)
+        xy[xy > np.pi] -= 2 * np.pi
+    elif topology == "circ":
+        xy = 2 * (1 - torch.cos(x - y))
+    else:
+        raise NotImplementedError
+    # xy[xy < 0] = -xy[xy < 0] # abs
+    return xy
+
+
+
+# align latent
+def signed_scaled_shift(
+    x, x_ref, dev="cpu", topology="torus", iters=1000, lr=1e-2, learn_scale=True
+):
+    """
+    Shift trajectory, with scaling, reflection and translation.
+
+    Shift trajectories to be as close as possible to each other, including
+    switches in sign.
+
+    :param np.array theta: circular input array of shape (timesteps,)
+    :param np.array theta_ref: reference circular input array of shape (timesteps,)
+    :param string dev:
+    :param int iters:
+    :param float lr:
+    :returns:
+    :rtype: tuple
+    """
+    XX = torch.tensor(x, device=dev)
+    XR = torch.tensor(x_ref, device=dev)
+
+    lowest_loss = np.inf
+    for sign in [1, -1]:  # select sign automatically
+        shift = Parameter(torch.zeros(1, device=dev))
+        p = [shift]
+
+        if learn_scale:
+            scale = Parameter(torch.ones(1, device=dev))
+            p += [scale]
+        else:
+            scale = torch.ones(1, device=dev)
+
+        optimizer = optim.Adam(p, lr=lr)
+        losses = []
+        for k in range(iters):
+            optimizer.zero_grad()
+            X_ = XX * sign * scale + shift
+            loss = (metric(X_, XR, topology) ** 2).mean()
+            loss.backward()
+            optimizer.step()
+            losses.append(loss.cpu().item())
+
+        l_ = loss.cpu().item()
+
+        if l_ < lowest_loss:
+            lowest_loss = l_
+            shift_ = shift.cpu().item()
+            scale_ = scale.cpu().item()
+            sign_ = sign
+            losses_ = losses
+
+    return x * sign_ * scale_ + shift_, shift_, sign_, scale_, losses_
+
+
+def align_CCA(X, X_tar):
+    """
+    :param np.array X: input variables of shape (time, dimensions)
+    """
+    d = X.shape[-1]
+    cca = CCA(n_components=d)
+    cca.fit(X, X_tar)
+    X_c = cca.transform(X)
+    return X_c, cca

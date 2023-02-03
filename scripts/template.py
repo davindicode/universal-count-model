@@ -211,7 +211,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                 tensor_type=tensor_type,
             )
 
-            latents += [nprb.inference.prior_variational_pair(d_z, p, v)]
+            latents += [nprb.inputs.prior_variational_pair(d_z, p, v)]
 
         elif zc[:1] == "T":
             d_z = int(zc[1:])
@@ -241,7 +241,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                 tensor_type=tensor_type,
             )
 
-            latents += [nprb.inference.prior_variational_pair(_z, p, v)]
+            latents += [nprb.inputs.prior_variational_pair(_z, p, v)]
 
         elif zc != "":
             raise ValueError("Invalid latent covariate type")
@@ -557,9 +557,8 @@ def setup_model(data_tuple, model_dict, enc_used):
     spktrain, cov, batch_info = data_tuple
     neurons, timesamples = spktrain.shape[0], spktrain.shape[-1]
 
-    ll_mode, filt_mode, map_mode, x_mode, z_mode, tensor_type = (
+    ll_mode, map_mode, x_mode, z_mode, tensor_type = (
         model_dict["ll_mode"],
-        model_dict["filt_mode"],
         model_dict["map_mode"],
         model_dict["x_mode"],
         model_dict["z_mode"],
@@ -575,7 +574,7 @@ def setup_model(data_tuple, model_dict, enc_used):
     input_data, d_x, d_z = inputs_used(model_dict, cov, batch_info)
     model_dict["map_xdims"], model_dict["map_zdims"] = d_x, d_z
 
-    input_group = nprb.inference.input_group(tensor_type)
+    input_group = nprb.inputs.input_group(tensor_type)
     input_group.set_XZ(input_data, timesamples, batch_info=batch_info)
 
     # encoder mapping
@@ -615,7 +614,6 @@ def extract_model_dict(config, dataset_dict):
 
     model_dict = {
         "ll_mode": ll_mode,
-        "filt_mode": filt_mode,
         "map_mode": map_mode,
         "x_mode": x_mode,
         "z_mode": z_mode,

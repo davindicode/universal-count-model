@@ -1,19 +1,22 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from . import mean_functions
-from .kernel import (
+from .combine import (
     Combination,
     Constant,
-    DeepKernel,
-    DotProduct,
-    Exponential,
+    Product,
+    Sum,
+)
+
+from .dot import(
     Linear,
+    Polynomial,
+)
+
+from .lengthscale import(
+    Exponential,
     Matern32,
     Matern52,
-    Polynomial,
-    Product,
     RationalQuadratic,
-    SquaredExponential,
-    Sum,
+    SquaredExponential,   
 )

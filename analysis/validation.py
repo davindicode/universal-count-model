@@ -10,13 +10,14 @@ import scipy.stats as scstats
 import numpy as np
 
 import sys
-sys.path.append("..") # access to library
-sys.path.append("../scripts/") # access to scripts
+
+
 
 import os
 if not os.path.exists('./saves'):
     os.makedirs('./saves')
     
+sys.path.append("../lib") # access to library
 
 import neuroprob as mdl
 from neuroprob import utils
@@ -25,9 +26,10 @@ from neuroprob import GP
 
 dev = utils.pytorch.get_device(gpu=0)
 
-import models
-import model_utils
-import validation
+sys.path.append("../scripts") # access to scripts
+
+import template
+import fit_model
 
 import pickle
 
@@ -41,7 +43,7 @@ import pickle
 ###
 
 datatype = 1
-rcov, neurons, tbin, resamples, rc_t = validation.get_dataset(datatype, '../scripts/data')
+rcov, neurons, tbin, resamples, rc_t = fit_model.get_dataset(datatype, '../scripts/data')
 max_count = int(rc_t.max())
 trials = 1
 
@@ -55,17 +57,17 @@ covariates = [rhd_t[None, :, None].repeat(trials, axis=0),
 glm = validation.IP_bumps(tbin, resamples, covariates, neurons, trials=trials)
 glm.to(dev)
 
-checkpoint = torch.load('../scripts/data/IP_HDC_model', map_location='cuda:0')
+checkpoint = torch.load('../scripts/data/IP.pt', map_location='cuda:0')
 glm.load_state_dict(checkpoint['model'])
 
 
   
 data_dict = {
-    ra_t, 
-    use_neuron, 
-    max_count, 
-    tbin, 
-    rcov
+    'ra_t': ra_t, 
+    'use_neuron': use_neuron, 
+    'max_count': max_count, 
+    'tbin': tbin, 
+    'rcov': rcov, 
 }
 
 
@@ -163,9 +165,18 @@ gFF = np.ones_like(grate)
 
 
 latent_dict = {
-    X_c, X_s, covariates_z, cv_pll, 
-    avglower, avgmean, avgupper, fflower, ffmean, ffupper, 
-    grate, gFF, 
+    'X_c': X_c, 
+    'X_s': X_s, 
+    'covariates_z': covariates_z, 
+    'cv_pll': cv_pll, 
+    'avglower': avglower, 
+    'avgmean': avgmean, 
+    'avgupper': avgupper, 
+    'fflower': fflower, 
+    'ffmean': ffmean, 
+    'ffupper': ffupper, 
+    'grate': grate, 
+    'gFF': gFF, 
 }
 
 
@@ -340,14 +351,17 @@ covariates = [rhd_t[None, :, None].repeat(trials, axis=0)]
 glm = validation.CMP_hdc(tbin, resamples, covariates, neurons, trials=trials)
 glm.to(dev)
 
-checkpoint = torch.load('../scripts/data/hCMP_HDC_model', map_location='cpu')
+checkpoint = torch.load('../scripts/data/hCMP.pt', map_location='cpu')
 
 glm.load_state_dict(checkpoint['model'])
 
 
 
 data_dict = {
-    use_neuron, max_count, tbin, rcov
+    'use_neuron': use_neuron, 
+    'max_count': max_count, 
+    'tbin': tbin, 
+    'rcov': rcov, 
 }
 
 
@@ -398,36 +412,13 @@ log_nu = glm.likelihood.dispersion_mapping.eval_rate(covariates, use_neuron)[0:1
 log_mudt = torch.tensor(np.log(mu*tbin)).to(dev)
 nu = torch.tensor(np.exp(log_nu)).to(dev)
 
-AD = False # using Autograd for computing the CMP partition function is slow...
-if AD: # differentiate the partition function
-    t = torch.tensor(0.).to(dev)
-    t.requires_grad = True
-    log_Z = glm.likelihood.log_Z(log_mu+t, nu)
-
-    grad_t = torch.empty(log_Z.shape)
-    ggrad_t = torch.empty(log_Z.shape)
-    for n in use_neuron:
-        print(n)
-        for s in range(steps):
-            ind = torch.zeros_like(log_Z)
-            ind[0, n, s] = 1.
-            grad_t_, = torch.autograd.grad(log_Z, t, ind, retain_graph=True, create_graph=True)
-            grad_t[0, n, s] = grad_t_
-
-            ggrad_t_, = torch.autograd.grad(grad_t_, t, retain_graph=True, create_graph=True)
-            ggrad_t[0, n, s] = ggrad_t_
-
-
-    gmean = grad_t.data.cpu().numpy()[0, ...]
-    gvar = ggrad_t.data.cpu().numpy()[0, ...]
-
-else: # compute the partition function explicitly
-    gmean = utils.stats.cmp_moments(1, mu[0, ...], nu.cpu().numpy()[0, ...], tbin, J=10000)
-    gvar = utils.stats.cmp_moments(2, mu[0, ...], nu.cpu().numpy()[0, ...], tbin, J=10000) - gmean**2
+# compute the partition function explicitly
+gmean = utils.stats.cmp_moments(1, mu[0, ...], nu.cpu().numpy()[0, ...], tbin, J=10000)
+gvar = utils.stats.cmp_moments(2, mu[0, ...], nu.cpu().numpy()[0, ...], tbin, J=10000) - gmean**2
     
 grate = mu[0, ...]
 gdisp = nu.cpu().numpy()[0, ...]
-gFF = gvar/gmean
+gFF = gvar / gmean
 
 
 
@@ -445,27 +436,45 @@ clower, cmean, cupper = [cs_.cpu().numpy() for cs_ in cs]
 
 avg = (x_counts[None, None, None, :]*P_mc.cpu()).sum(-1)
 xcvar = ((x_counts[None, None, None, :]**2*P_mc.cpu()).sum(-1)-avg**2)
-ff = xcvar/avg
+ff = xcvar / avg
 
-avgs = utils.signal.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95], 
-                                             smooth_length=5, padding_mode='circular')
+avgs = utils.signal.percentiles_from_samples(
+    avg, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode='circular')
 avglower, avgmean, avgupper = [cs_.cpu().numpy() for cs_ in avgs]
 
-ffs = utils.signal.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95], 
-                                            smooth_length=5, padding_mode='circular')
+ffs = utils.signal.percentiles_from_samples(
+    ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode='circular')
 fflower, ffmean, ffupper = [cs_.cpu().numpy() for cs_ in ffs]
 
-xcvars = utils.signal.percentiles_from_samples(xcvar, percentiles=[0.05, 0.5, 0.95], 
-                                               smooth_length=5, padding_mode='circular')
+xcvars = utils.signal.percentiles_from_samples(
+    xcvar, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode='circular')
 varlower, varmean, varupper = [cs_.cpu().numpy() for cs_ in xcvars]
 
 
  
 
 regression_dict = {
-    covariates, P_rg, grate, gdisp, gFF, gvar, hd, ref_prob, clower, cmean, cupper, 
-    avglower, avgmean, avgupper, fflower, ffmean, ffupper, varlower, varmean, varupper, 
-    RG_cv_ll, 
+    'covariates': covariates, 
+    'P_rg': P_rg, 
+    'grate': grate, 
+    'gdisp': gdisp, 
+    'gFF': gFF, 
+    'gvar': gvar, 
+    'hd': hd, 
+    'ref_prob': ref_prob, 
+    'clower': clower, 
+    'cmean': cmean, 
+    'cupper': cupper, 
+    'avglower': avglower, 
+    'avgmean': avgmean, 
+    'avgupper': avgupper, 
+    'fflower': fflower, 
+    'ffmean': ffmean, 
+    'ffupper': ffupper, 
+    'varlower': varlower, 
+    'varmean': varmean, 
+    'varupper': varupper, 
+    'RG_cv_ll': RG_cv_ll, 
 }
 
 
@@ -530,11 +539,17 @@ T_KS_rg = np.array(T_KS_rg).reshape(len(CV), len(M), -1)
 
    
 dispersion_dict = {
-    q_DS_rg, T_DS_rg, T_KS_rg, Qq_rg, Zz_rg, sign_DS, sign_KS, 
+    'q_DS_rg': q_DS_rg, 
+    'T_DS_rg': T_DS_rg, 
+    'T_KS_rg': T_KS_rg, 
+    'Qq_rg': Qq_rg, 
+    'Zz_rg': Zz_rg, 
+    'sign_DS': sign_DS, 
+    'sign_KS': sign_KS, 
 }
-    
-    
-   
+
+
+
 
 
 # aligning trajectory and computing RMS for different models
@@ -677,4 +692,4 @@ data_run = {
     'latent': latent_dict
 }
 
-pickle.dump(data_run, open('./saves/P1_hcmp.p', 'wb'))
+pickle.dump(data_run, open('./saves/hCMP_results.p', 'wb'))

@@ -1,7 +1,6 @@
 import argparse
 import sys
-
-import matplotlib.pyplot as plt
+import pickle
 
 import numpy as np
 import torch
@@ -10,112 +9,132 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
-sys.path.append("../lib/")  # access to library
+sys.path.append("../../lib")  # access to library
 
 
 import neuroprob as nprb
-from neuroprob import utils
+from neuroprob import base, utils
 
 dev = nprb.inference.get_device(gpu=0)
 
-import pickle
-
-import helper
 
 
-### synthetic data ###
+sys.path.append("../../scripts")
 
-# parameterizations
-def w_to_gaussian(w):
+import template
+
+
+
+### mixture rate models ###
+class _mappings(base._input_mapping):
+    """ """
+
+    def __init__(self, input_dims, mappings):
+        """
+        Additive fields, so exponential inverse link function.
+        All models should have same the input and output structure.
+
+        :params list models: list of base models, each initialized separately
+        """
+        self.maps = len(mappings)
+        if self.maps < 2:
+            raise ValueError("Need to have more than one component mapping")
+
+        # covar_type = None # intially no uncertainty in model
+        for m in range(len(mappings)):  # consistency check
+            if m < len(mappings) - 1:  # consistency check
+                if mappings[m].out_dims != mappings[m + 1].out_dims:
+                    raise ValueError("Mappings do not match in output dimensions")
+                if mappings[m].tensor_type != mappings[m + 1].tensor_type:
+                    raise ValueError("Tensor types of mappings do not match")
+
+        super().__init__(input_dims, mappings[0].out_dims, mappings[0].tensor_type)
+
+        self.mappings = nn.ModuleList(mappings)
+
+    def constrain(self):
+        for m in self.mappings:
+            m.constrain()
+
+    def KL_prior(self):
+        KL_prior = 0
+        for m in self.mappings:
+            KL_prior = KL_prior + m.KL_prior()
+        return KL_prior
+
+
+class product_model(_mappings):
     """
-    Get Gaussian and orthogonal theta parameterization from the GLM parameters.
-
-    :param np.array w: input GLM parameters of shape (neurons, dims), dims labelling (w_1, w_x,
-                       w_y, w_xx, w_yy, w_xy, w_cos, w_sin)
+    Takes in identical base models to form a product model.
     """
-    neurons = mu.shape[0]
-    w_spat = w[:, 0:6]
-    prec = np.empty((neurons, 3))  # xx, yy and xy/yx
-    mu = np.empty((neurons, 2))  # x and y
-    prec[:, 0] = -2 * w_spat[:, 3]
-    prec[:, 1] = -2 * w_spat[:, 4]
-    prec[:, 2] = -w_spat[:, 5]
-    prec_mat = []
-    for n in range(neurons):
-        prec_mat.append([[prec[n, 0], prec[n, 2]], [prec[n, 2], prec[n, 1]]])
-    prec_mat = np.array(prec_mat)
-    denom = prec[:, 0] * prec[:, 1] - prec[:, 2] ** 2
-    mu[:, 0] = (w_spat[:, 1] * prec[:, 1] - w_spat[:, 2] * prec[:, 2]) / denom
-    mu[:, 1] = (w_spat[:, 2] * prec[:, 0] - w_spat[:, 1] * prec[:, 2]) / denom
-    rate_0 = np.exp(
-        w_spat[:, 0] + 0.5 * (mu * np.einsum("nij,nj->ni", prec_mat, mu)).sum(1)
-    )
 
-    w_theta = w[:, 6:]
-    theta_0 = np.angle(w_theta[:, 0] + w_theta[:, 1] * 1j)
-    beta = np.sqrt(w_theta[:, 0] ** 2 + w_theta[:, 1] ** 2)
+    def __init__(self, input_dims, mappings):
+        super().__init__(input_dims, mappings)
 
-    return mu, prec, rate_0, np.concatenate((beta[:, None], theta_0[:, None]), axis=1)
+    def compute_F(self, XZ):
+        """
+        Note that the rates used for multiplication in the product model are evaluated as the
+        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
+        posterior mean. The difference between these quantities is small when the posterior
+        variance is small.
+
+        The exact method would be to use MC sampling.
+
+        :param torch.Tensor cov: input covariates of shape (sample, time, dim)
+        """
+        rate_ = []
+        var_ = []
+        for m in self.mappings:
+            F_mu, F_var = m.compute_F(XZ)
+            rate_.append(m.f(F_mu))
+            if isinstance(F_var, numbers.Number):
+                var_.append(0)
+                continue
+            var_.append(
+                base._inv_link_deriv[self.inv_link](F_mu) ** 2 * F_var
+            )  # delta method
+
+        tot_var = 0
+        rate_ = torch.stack(rate_, dim=0)
+        for m, var in enumerate(var_):
+            ind = torch.tensor([i for i in range(rate_.shape[0]) if i != m])
+            if isinstance(var, numbers.Number) is False:
+                tot_var = tot_var + (rate_[ind]).prod(dim=0) ** 2 * var
+
+        return rate_.prod(dim=0), tot_var
 
 
-def gaussian_to_w(mu, prec, rate_0, theta_p):
+class mixture_composition(_mappings):
     """
-    Get GLM parameters from Gaussian and orthogonal theta parameterization
-
-    :param np.array mu: mean of the Gaussian field of shape (neurons, 2)
-    :param np.array prec: precision matrix elements xx, yy, and xy of shape (neurons, 3)
-    :param np.array rate_0: rate amplitude of shape (neurons)
-    :param np.array theta_p: theta modulation parameters beta and theta_0 of shape (neurons, 2)
+    Takes in identical base models to form a mixture model with custom functions.
+    Does not support models with variational uncertainties, ignores those.
     """
-    neurons = mu.shape[0]
-    prec_mat = []
-    for n in range(neurons):
-        prec_mat.append([[prec[n, 0], prec[n, 2]], [prec[n, 2], prec[n, 1]]])
-    prec_mat = np.array(prec_mat)
-    w = np.empty((neurons, 8))
-    w[:, 0] = np.log(rate_0) - 0.5 * (mu * np.einsum("nij,nj->ni", prec_mat, mu)).sum(1)
-    w[:, 1] = mu[:, 0] * prec[:, 0] + mu[:, 1] * prec[:, 2]
-    w[:, 2] = mu[:, 1] * prec[:, 1] + mu[:, 0] * prec[:, 2]
-    w[:, 3] = -0.5 * prec[:, 0]
-    w[:, 4] = -0.5 * prec[:, 1]
-    w[:, 5] = -prec[:, 2]
-    w[:, 6] = theta_p[:, 0] * np.cos(theta_p[:, 1])
-    w[:, 7] = theta_p[:, 0] * np.sin(theta_p[:, 1])
-    return w
 
+    def __init__(self, input_dims, mappings, comp_func, inv_link="relu"):
+        super().__init__(input_dims, mappings, inv_link)
+        self.comp_func = comp_func
 
-def w_to_vonmises(w):
-    """
-    :param np.array w: parameters of the GLM of shape (neurons, 3)
-    """
-    rate_0 = w[:, 0]
-    theta_0 = np.angle(w[:, 1] + w[:, 2] * 1j)
-    kappa = np.sqrt(w[:, 1] ** 2 + w[:, 2] ** 2)
-    return rate_0, kappa, theta_0
+    def compute_F(self, XZ):
+        """
+        Note that the rates used for addition in the mixture model are evaluated as the
+        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
+        posterior mean. The difference between these quantities is small when the posterior
+        variance is small.
 
+        """
+        r_ = [base._inv_link[self.inv_link](m.compute_F(XZ)[0]) for m in self.mappings]
+        return self.comp_func(r_), 0
 
-def vonmises_to_w(rate_0, kappa, theta_0):
-    """
-    :param np.array rate_0: rate amplitude of shape (neurons)
-    :param np.array theta_p: von Mises parameters kappa and theta_0 of shape (neurons, 2)
-    """
-    neurons = rate_0.shape[0]
-    w = np.empty((neurons, 3))
-    w[:, 0] = np.log(rate_0)
-    w[:, 1] = kappa * np.cos(theta_0)
-    w[:, 2] = kappa * np.sin(theta_0)
-    return w
-
-
-# GLM
-class vonMises_GLM(nprb.mappings.GLM):
+    
+    
+class vonMises_bumps(nprb.mappings.custom_wrapper):
     """
     Angular (head direction/theta) variable GLM
     """
 
     def __init__(self, neurons, tensor_type=torch.float, active_dims=None):
         super().__init__(
-            1, neurons, 3, tensor_type=tensor_type, active_dims=active_dims
+            1, neurons, tensor_type=tensor_type, active_dims=active_dims
         )
 
     def set_params(self, w):
@@ -135,32 +154,9 @@ class vonMises_GLM(nprb.mappings.GLM):
         return (g * self.w[None, :, None, :]).sum(-1), 0
 
 
-class Gauss_GLM(nprb.mappings.GLM):
-    """
-    Quadratic GLM for position
-    """
-
-    def __init__(self, neurons, tensor_type=torch.float, active_dims=None):
-        super().__init__(
-            2, neurons, 6, tensor_type=tensor_type, active_dims=active_dims
-        )
-
-    def set_params(self, w):
-        self.w.data = w.type(self.tensor_type).to(self.dummy.device)
-
-    def compute_F(self, XZ):
-        XZ = self._XZ(XZ)
-        x = XZ[..., 0]
-        y = XZ[..., 1]
-        g = torch.stack(
-            (torch.ones_like(x, device=x.device), x, y, x**2, y**2, x * y), dim=-1
-        )
-        return (g * self.w[None, :, None, :]).sum(-1), 0
-
-
 class attention_bumps(nprb.mappings.custom_wrapper):
     def __init__(
-        self, neurons, inv_link="relu", tens_type=torch.float, active_dims=None
+        self, neurons, tens_type=torch.float, active_dims=None
     ):
         super().__init__(
             1, neurons, inv_link, tensor_type=tens_type, active_dims=active_dims
@@ -187,11 +183,11 @@ class attention_bumps(nprb.mappings.custom_wrapper):
 
 
 # models
-def CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=1):
+def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     """
-    CMP with separate mu and nu tuning curves
+    CMP with separate mu and nu parameter tuning curves
     """
-    # Von Mises fields
+    # von Mises fields
     angle_0 = np.linspace(0, 2 * np.pi, neurons + 1)[:-1]
     beta = np.random.rand(neurons) * 2.0 + 0.5
     rate_0 = np.random.rand(neurons) * 4.0 + 4.0
@@ -200,10 +196,10 @@ def CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=1):
     ).T  # beta, phi_0 for theta modulation
     neurons = w.shape[0]
 
-    vm_rate = nprb.rate_models.vonMises_GLM(neurons, inv_link="exp")
-    vm_rate.set_params(w)
+    vm_mu = vonMises_bumps(neurons)
+    vm_mu.set_params(w)
 
-    # Dispersion tuning curve
+    # dispersion tuning curve
     _angle_0 = np.random.permutation(
         angle_0
     )  # angle_0 + 0.4*np.random.randn(neurons)#np.random.permutation(angle_0)
@@ -213,8 +209,8 @@ def CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=1):
         [np.log(_rate_0) + _beta, _beta * np.cos(_angle_0), _beta * np.sin(_angle_0)]
     ).T  # beta, phi_0 for theta modulation
 
-    vm_disp = nprb.rate_models.vonMises_GLM(neurons, inv_link="identity")
-    vm_disp.set_params(w)
+    log_nu = vonMises_bumps(neurons)
+    log_nu.set_params(w)
 
     # sum for mu input
     comp_func = (
@@ -224,13 +220,13 @@ def CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=1):
         )
         / sample_bin
     )
-    rate_model = nprb.parametrics.mixture_composition(
-        1, [vm_rate, vm_disp], comp_func, inv_link="softplus"
+    rate_model = mixture_composition(
+        1, [log_mu, log_nu], comp_func, 
     )
 
     # CMP process output
     likelihood = nprb.likelihoods.COM_Poisson(
-        sample_bin, neurons, "softplus", dispersion_mapping=vm_disp
+        sample_bin, neurons, "relu", dispersion_mapping=log_nu
     )
 
     input_group = nprb.inference.input_group(1, [(None, None, None, 1)])
@@ -246,9 +242,9 @@ def CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=1):
 
 def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     """
-    Poisson with spotlight attention
+    Poisson rates modulated by localized attention
     """
-    # Von Mises fields
+    # von Mises fields
     angle_0 = np.linspace(0, 2 * np.pi, neurons + 1)[:-1]
     beta = np.random.rand(neurons) * 2.6 + 0.4
     rate_0 = np.random.rand(neurons) * 4.0 + 3.0
@@ -257,7 +253,7 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     ).T  # beta, phi_0 for theta modulation
     neurons = w.shape[0]
 
-    vm_rate = nprb.rate_models.vonMises_GLM(neurons, inv_link="exp")
+    vm_rate = nprb.rate_models.vonMises_bumps(neurons)
     vm_rate.set_params(w)
 
     att_rate = attention_bumps(neurons, active_dims=[1])
@@ -267,7 +263,7 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     A_0 = np.ones(neurons) * 0.3
     att_rate.set_params(mu, sigma, A, A_0)
 
-    rate_model = nprb.parametrics.product_model(2, [vm_rate, att_rate], inv_link="relu")
+    rate_model = product_model(2, [vm_rate, att_rate])
 
     input_group = nprb.inference.input_group(2, [(None, None, None, 1)] * 2)
     input_group.set_XZ(
@@ -293,15 +289,13 @@ def main():
     )
 
     parser.add_argument("--seed", default=123, type=int)
-#     parser.add_argument(
-#         "--stage_indicator", dest="stage_indicator", action="store_true"
-#     )
-#     parser.set_defaults(stage_indicator=False)
+    parser.add_argument("--savedir", default="../", type=str)
 
     args = parser.parse_args()
     
     # seed
-    np.random.seed(args.seed)
+    seed = args.seed
+    rng = np.random.default_rng()
     
     # Gaussian von Mises bump head direction model
     sample_bin = 0.1  # 100 ms
@@ -311,7 +305,7 @@ def main():
     hd_t = np.empty(track_samples)
 
     hd_t[0] = 0
-    rn = np.random.randn(track_samples)
+    rn = rng.normal(size=(track_samples,))
     for k in range(1, track_samples):
         hd_t[k] = hd_t[k - 1] + 0.5 * rn[k]
 
@@ -320,12 +314,12 @@ def main():
     # GP trajectory sample
     Tl = track_samples
 
-    l = 200.0 * sample_bin * np.ones((1, 1))
-    v = np.ones(1)
-    kernel_tuples = [("variance", v), ("RBF", "euclid", l)]
+    l = 200.0 * sample_bin * torch.ones((1, 1))
+    v = torch.ones(1)
+    kernel_tuples = [("variance", v), ("SE", "euclid", l)]
 
     with torch.no_grad():
-        kernel, _, _ = helper.create_kernel(kernel_tuples, "softplus", torch.double)
+        kernel, _ = template.create_kernel(kernel_tuples, "softplus", torch.double)
 
         T = torch.arange(Tl)[None, None, :, None] * sample_bin
         K = kernel(T, T)[0, 0]
@@ -337,12 +331,13 @@ def main():
     a_t = v.data.numpy()
 
     ### sample activity ###
-
+    savedir = args.savedir
+    
     # heteroscedastic CMP
     neurons = 50
 
     covariates = [hd_t[None, :, None].repeat(trials, axis=0)]
-    glm = CMP_hdc(sample_bin, track_samples, covariates, neurons, trials=trials)
+    glm = CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
     glm.to(dev)
 
     XZ, rate, _ = glm.evaluate(0)
@@ -361,8 +356,8 @@ def main():
     )
     rhd_t = rhd_t % (2 * np.pi)
 
-    np.savez_compressed("./data/CMPh_HDC", spktrain=rc_t, rhd_t=rhd_t, tbin=tbin)
-    torch.save({"model": glm.state_dict()}, "./data/CMPh_HDC_model")
+    np.savez_compressed(savedir + "hCMP_seed{}".format(seed), spktrain=rc_t, rhd_t=rhd_t, tbin=tbin)
+    torch.save({"model": glm.state_dict()}, savedir + "hCMP_seed{}.pt".format(seed))
 
     # modulated Poisson
     neurons = 50
@@ -391,9 +386,9 @@ def main():
     rhd_t = rhd_t % (2 * np.pi)
 
     np.savez_compressed(
-        "./data/IP_HDC", spktrain=rc_t, rhd_t=rhd_t, ra_t=ra_t, tbin=tbin
+        savedir + "IP_seed{}".format(seed), spktrain=rc_t, rhd_t=rhd_t, ra_t=ra_t, tbin=tbin
     )
-    torch.save({"model": glm.state_dict()}, "./data/IP_HDC_model")
+    torch.save({"model": glm.state_dict()}, savedir + "IP_seed{}.pt".format(seed))
 
 
 if __name__ == "__main__":

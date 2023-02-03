@@ -500,7 +500,7 @@ def var_var_MI(sample_bin, v1_t, v2_t, v1_bin, v2_bin):
 
 
 # histograms
-def smooth_hist(rate_binned, sm_filter, bound, dev="cpu"):
+def smooth_hist(rate_binned, sm_filter, bound):
     r"""
     Neurons is the batch dimension, parallelize the convolution for 1D, 2D or 3D
     bound indicates the padding mode ('periodic', 'repeat', 'zeros')
@@ -509,7 +509,6 @@ def smooth_hist(rate_binned, sm_filter, bound, dev="cpu"):
     :param np.array rate_binned: input histogram array of shape (units, ndim_1, ndim_2, ...)
     :param np.array sm_filter: input filter array of shape (ndim_1, ndim_2, ...)
     :param list bound: list of strings (per dimension) to indicate convolution boundary conditions
-    :param string dev: device to perform convolutions on
     :returns: smoothened histograms
     :rtype: np.array
     """
@@ -558,7 +557,7 @@ def smooth_hist(rate_binned, sm_filter, bound, dev="cpu"):
     return smth_rate
 
 
-def KDE_behaviour(bins_tuple, covariates, sm_size, L, smooth_modes, dev="cpu"):
+def KDE_behaviour(bins_tuple, covariates, sm_size, L, smooth_modes):
     """
     Kernel density estimation of the covariates, with Gaussian kernels.
     """
@@ -603,7 +602,7 @@ def KDE_behaviour(bins_tuple, covariates, sm_size, L, smooth_modes, dev="cpu"):
             ones_arr = np.swapaxes(ones_arr, 0, d)
             sm_filter = np.swapaxes(sm_filter, 0, d)
 
-    smth_time = smooth_hist(bin_time[None, ...], sm_filter, smooth_modes, dev=dev)
+    smth_time = smooth_hist(bin_time[None, ...], sm_filter, smooth_modes)
     smth_time /= smth_time.sum()  # normalize
     return smth_time[0, ...], bin_time
 

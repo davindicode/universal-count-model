@@ -5,16 +5,7 @@ import torch
 import torch.nn as nn
 from torch.nn.parameter import Parameter
 
-from .. import base
-
-
-class custom_wrapper(base._input_mapping):
-    """
-    Custom base class for rate models in general.
-    """
-
-    def compute_F(self, XZ):
-        raise NotImplementedError
+from . import base
 
 
 class GLM(base._input_mapping):
@@ -69,49 +60,3 @@ class GLM(base._input_mapping):
         return self.compute_F(XZ)[0]
 
 
-class FFNN(base._input_mapping):
-    """
-    Feedforward artificial neural network model
-    """
-
-    def __init__(
-        self,
-        input_dim,
-        out_dims,
-        mu_ANN,
-        sigma_ANN=None,
-        tensor_type=torch.float,
-        active_dims=None,
-    ):
-        """
-        :param nn.Module mu_ANN: ANN parameterizing the mean function mapping
-        :param nn.Module sigma_ANN: ANN paramterizing the standard deviation mapping if stochastic
-        """
-        super().__init__(input_dim, out_dims, tensor_type, active_dims)
-
-        self.add_module("mu_ANN", mu_ANN)
-        if sigma_ANN is not None:
-            self.add_module("sigma_ANN", sigma_ANN)
-        else:
-            self.sigma_ANN = None
-
-    def compute_F(self, XZ):
-        """
-        The input to the ANN will be of shape (samples*timesteps, dims).
-
-        :param torch.Tensor cov: covariates with shape (samples, timesteps, dims)
-        :returns: inner product with shape (samples, neurons, timesteps)
-        :rtype: torch.tensor
-        """
-        XZ = self._XZ(XZ)
-        incov = XZ.view(-1, XZ.shape[-1])
-        post_mu = self.mu_ANN(incov).view(*XZ.shape[:2], -1).permute(0, 2, 1)
-        if self.sigma_ANN is not None:
-            post_var = self.sigma_ANN(incov).view(*XZ.shape[:2], -1).permute(0, 2, 1)
-        else:
-            post_var = 0
-
-        return post_mu, post_var
-
-    def sample_F(self, XZ):
-        self.compute_F(XZ)[0]

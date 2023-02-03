@@ -1,9 +1,5 @@
 -e .
-sphinx
-sphinx-rtd-theme
-torch==1.8
-numpy 
+torch>=1.8
+numpy
 scipy
-matplotlib
 tqdm
-daft

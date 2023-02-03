@@ -1,25 +1,16 @@
 import numbers
+import math
 
 import numpy as np
-import torch
-
 from scipy.special import factorial
+
+import torch
+import torch.nn as nn
 from torch.nn.parameter import Parameter
+import torch.distributions as dist
 
-from .. import base, distributions as dist
+from . import base
 
-
-
-def gen_IBP(intensity):
-    """
-    Sample of the Inhomogenous Bernoulli Process
-
-    :param numpy.array intensity: intensity of the Bernoulli process at array index
-    :returns: sample of binary variables with same shape as intensity
-    :rtype: numpy.array
-    """
-    b = Bernoulli(torch.tensor(intensity))
-    return b.sample().numpy()
 
 
 def gen_CMP(mu, nu, max_rejections=1000):
@@ -206,6 +197,68 @@ class _count_model(base._likelihood):
 
 
 # Special cases
+class Parallel_Linear(nn.Module):
+    """
+    Linear layers that separate different operations in one dimension.
+    """
+
+    __constants__ = ["in_features", "out_features", "channels"]
+    in_features: int
+    out_features: int
+    weight: torch.Tensor
+
+    def __init__(
+        self, in_features: int, out_features: int, channels: int, bias: bool = True
+    ) -> None:
+        """
+        If channels is 1, then we share all the weights over the channel dimension.
+        """
+        super(Parallel_Linear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.channels = channels
+        self.weight = Parameter(torch.Tensor(channels, out_features, in_features))
+        if bias:
+            self.bias = Parameter(torch.Tensor(channels, out_features))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input: torch.Tensor, channels: list) -> torch.Tensor:
+        """
+        :param torch.tensor input: input of shape (batch, channels, in_dims)
+        """
+        if self.channels > 1:  # separate weight matrices per channel
+            W = self.weight.expand(
+                1, self.channels, self.out_features, self.in_features
+            )[:, channels, ...]
+            B = (
+                0
+                if self.bias is None
+                else self.bias.expand(1, self.channels, self.out_features)[
+                    :, channels, :
+                ]
+            )
+        else:
+            W = self.weight[None, ...]
+            B = self.bias[None, ...]
+
+        return (W * input[..., None, :]).sum(-1) + B
+
+    def extra_repr(self) -> str:
+        return "in_features={}, out_features={}, channels={}, bias={}".format(
+            self.in_features, self.out_features, self.channels, self.bias is not None
+        )
+    
+    
+    
 class Universal(base._likelihood):
     """
     Universal count distribution with finite cutoff at max_count.
@@ -213,7 +266,7 @@ class Universal(base._likelihood):
     """
 
     def __init__(
-        self, neurons, C, basis_mode, inv_link, max_count, shared_W=False, tensor_type=torch.float
+        self, neurons, C, basis_mode, inv_link, max_count, tensor_type=torch.float
     ):
         super().__init__(1.0, neurons * C, neurons, inv_link, tensor_type)  # dummy tbin
         self.K = max_count
@@ -226,8 +279,8 @@ class Universal(base._likelihood):
             [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
         ).shape[-1]  # size of expanded vector
 
-        mapping_net = nprb.nn.Parallel_MLP(
-            [], expand_C, (max_count + 1), channels, shared_W=shared_W, out=None
+        mapping_net = Parallel_Linear(
+            expand_C, (max_count + 1), C
         )  # single linear mapping
         self.add_module("mapping_net", mapping_net)  # maps from NxC to NxK
 
@@ -274,7 +327,7 @@ class Universal(base._likelihood):
         onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
         return onehot_.view(*onehot.shape)
     
-    def get_basis(basis_mode="el"):
+    def get_basis(self, basis_mode):
         
         if basis_mode == "id":
             basis = (lambda x: x,)
@@ -394,15 +447,18 @@ class Universal(base._likelihood):
             )  # h has only observed neurons (from neuron)
             logp, tar = self.sample_helper(h, b, neuron, samples)
             ws = torch.tensor(1.0 / logp.shape[0])
+            
         elif mode == "GH":
             h, ws = self.gh_gen(F_mu, F_var, samples, F_dims)
             logp, tar = self.sample_helper(h, b, neuron, samples)
             ws = ws[:, None]
+            
         elif mode == "direct":
             rates, n_l_rates, spikes = self.sample_helper(
                 F_mu[:, F_dims, :], b, neuron, samples
             )
             ws = torch.tensor(1.0 / rates.shape[0])
+            
         else:
             raise NotImplementedError
 
@@ -422,7 +478,7 @@ class Universal(base._likelihood):
         log_probs = self.get_logp(
             torch.tensor(F_mu[:, F_dims, :], dtype=self.tensor_type)
         )
-        c_dist = mdl.distributions.Categorical(logits=log_probs)
+        c_dist = dist.Categorical(logits=log_probs)
         cnt_prob = torch.exp(log_probs)
         return c_dist.sample().numpy()
 
@@ -476,7 +532,8 @@ class Bernoulli(_count_model):
         :rtype: np.array
         """
         neuron = self._validate_neuron(neuron)
-        return gen_IBP(rate[:, neuron, :] * self.tbin.item())
+        p = rate[:, neuron, :] * self.tbin.item()
+        return np.random.binomial(1, p)
 
 
 class Poisson(_count_model):
@@ -640,7 +697,7 @@ class ZI_Poisson(_count_model):
                     .numpy()
                 )
 
-        zero_mask = gen_IBP(alpha_)
+        zero_mask = np.random.binomial(1, alpha_)
         return (1.0 - zero_mask) * torch.poisson(
             torch.tensor(rate_ * self.tbin.item())
         ).numpy()

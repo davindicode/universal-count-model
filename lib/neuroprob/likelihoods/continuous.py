@@ -4,7 +4,8 @@ import numpy as np
 import torch
 from torch.nn.parameter import Parameter
 
-from .. import base, distributions as dist
+from .. import distributions as dist
+from . import base
 
 
 # noise distribution

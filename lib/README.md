@@ -27,16 +27,16 @@ Input groups can contain observed and latent variables, with different priors on
 
 * Linear-nonlinear and GP mappings
 * LVMs
-    - Toroidal latent space priors ([Manifold GPLVM](https://arxiv.org/abs/2006.07429))
-    - AR(1) temporal prior on latents
+    - [Toroidal](https://arxiv.org/abs/2006.07429) latent space priors
+    - [AR(1)](https://www.biorxiv.org/content/10.1101/2022.05.11.490308v2.abstract) temporal prior on latents
 * Count process likelihoods
     - Poisson
-    - Zero-inflated Poisson
-    - Negative binomial
-    - Conway-Maxwell-Poisson
+    - Zero-inflated Poisson + heteroscedastic version
+    - Negative binomial + heteroscedastic version
+    - Conway-Maxwell-Poisson + heteroscedastic version
     - Universal (this work)
 * Gaussian likelihoods
-    - Univariate
+    - Univariate + heteroscedastic version
 
 
 
@@ -45,4 +45,3 @@ Input groups can contain observed and latent variables, with different priors on
 - [NumPy](https://numpy.org/)
 - [SciPy](https://scipy.org/)
 - [tqdm](https://tqdm.github.io/) for visualizing fitting/training progress
-- [Daft](https://docs.daft-pgm.org/en/latest/) to plot graphical model components

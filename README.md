@@ -60,7 +60,7 @@ The file models.py defines the encoding models and uses the library code (neurop
 In terms of neural data, the synthetic population data used in the paper and the head direction cell data is included in the ```data/``` folder.
 All required modes in the analysis notebooks can be seen in the code as it loads trained models.
 Note that there are separate notebooks for synthetic (validation) and real (HDC) datasets.
-All trained models are stored in the ```./checkpoint/``` folder.
+All trained models are stored in the ```scripts/checkpoint/``` folder.
 
 
 ##### Experiments in the paper
@@ -81,3 +81,10 @@ Intermediate files (pickled) will be stored in the ```saves/``` folder.
 
 #### 6. Run the plotting notebooks
 This loads the analysis results and plots paper figures in .pdf and .svg formats, exported to the ```./output/``` folder.
+
+
+
+## Dependencies
+- [matplotlib](https://matplotlib.org/) (figure plotting)
+- [daft](https://docs.daft-pgm.org/en/latest/) (graphical model plots)
+- Library dependencies, see ```lib/requirements.txt```

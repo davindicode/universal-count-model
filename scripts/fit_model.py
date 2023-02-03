@@ -110,6 +110,54 @@ def get_dataset(data_type, bin_size, single_spikes, path):
 
 
 ### model ###
+class Siren(nn.Module):
+    """
+    Activation function class for SIREN
+
+    `Implicit Neural Representations with Periodic Activation Functions`,
+    Vincent Sitzmann, Julien N. P. Martel, Alexander W. Bergman, David B. Lindell, Gordon Wetzstein
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input):
+        return torch.sin(input)
+
+
+
+
+
+
+class MLP(nn.Module):
+    """
+    Multi-layer perceptron class
+    """
+
+    def __init__(
+        self, layers, in_dims, out_dims, nonlin=nn.ReLU(), out=None, bias=True
+    ):
+        super().__init__()
+        net = nn.ModuleList([])
+        if len(layers) == 0:
+            net.append(nn.Linear(in_dims, out_dims, bias=bias))
+        else:
+            net.append(nn.Linear(in_dims, layers[0], bias=bias))
+            net.append(nonlin)
+            for k in range(len(layers) - 1):
+                net.append(nn.Linear(layers[k], layers[k + 1], bias=bias))
+                net.append(nonlin)
+                # net.append(nn.BatchNorm1d())
+            net.append(nn.Linear(layers[-1:][0], out_dims, bias=bias))
+        if out is not None:
+            net.append(out)
+        self.net = nn.Sequential(*net)
+
+    def forward(self, input):
+        return self.net(input)
+
+    
+    
 class FFNN_model(nn.Module):
     """
     Multi-layer perceptron class
@@ -143,7 +191,9 @@ class FFNN_model(nn.Module):
 
 
 def enc_used(model_dict, covariates, learn_mean):
-    """ """
+    """
+    Construct the neural encoding mapping module
+    """
     ll_mode, map_mode, x_mode, z_mode = (
         model_dict["ll_mode"],
         model_dict["map_mode"],
@@ -278,7 +328,7 @@ def main():
         args.data_type, args.bin_size, args.single_spikes, args.data_path
     )
 
-    template.train_model(dev, args, dataset_dict, enc_used, args.checkpoint_dir)
+    template.train_model(dev, args, dataset_dict, enc_used)
 
 
 if __name__ == "__main__":

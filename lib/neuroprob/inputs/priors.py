@@ -4,27 +4,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
+from .base import _prior
+
 from .. import distributions as dist
 
 
-class _prior(nn.Module):
-    """ """
-
-    def __init__(self, p, tensor_type, dims):
-        super().__init__()
-        self.tensor_type = tensor_type
-        self.AR_p = p
-        self.dims = dims
-
-    def validate(self, tsteps, trials):
-        raise NotImplementedError
-
-    def log_p(self, x, initial):
-        raise NotImplementedError
-
 
 class IndNormal(_prior):
-    """ """
+    """
+    Independent Gaussian prior
+    """
 
     def __init__(
         self,
@@ -44,17 +33,7 @@ class IndNormal(_prior):
         ### prior ###
         if topo == "torus":
             self.prior_dist = dist.Tn_Normal
-        elif topo == "SO(3)":
-            if dims != 4:
-                raise ValueError("Input dimensionality of this topology must be 4")
-            self.prior_dist = dist.SO3_Normal
-        elif topo == "sphere":
-            if dims == 3:
-                self.prior_dist = dist.S2_VMF
-            elif dims == 4:
-                self.prior_dist = dist.S3_Normal
-            else:
-                raise NotImplementedError("{}-sphere not supported.".format(dims - 1))
+            
         elif topo == "euclid":
             self.prior_dist = dist.Rn_Normal
         else:
@@ -86,7 +65,9 @@ class IndNormal(_prior):
 
 
 class IndUniform(_prior):
-    """ """
+    """
+    Independent uniform prior
+    """
 
     def __init__(self, topo, dims, tensor_type=torch.float):
         super().__init__(0, tensor_type, dims)
@@ -94,12 +75,7 @@ class IndUniform(_prior):
 
         if topo == "torus":
             self.prior_dist = dist.Tn_Uniform
-        elif topo == "SO(3)":
-            if dims != 4:
-                raise ValueError("Input dimensionality of this topology must be 4")
-            self.prior_dist = dist.SO3_Uniform
-        elif topo == "sphere":
-            self.prior_dist = dist.Sn_Uniform
+            
         elif topo == "euclid":
             self.prior_dist = dist.Rn_Uniform
         else:
@@ -137,14 +113,6 @@ class ARNormal(_prior):
 
         if topo == "torus":
             self.rw_dist = dist.Tn_Normal
-
-        elif topo == "sphere":
-            if dims == 3:  # mean vector length
-                self.rw_dist = dist.S2_VMF
-            elif dims == 4:
-                self.rw_dist = dist.S3_Normal
-            else:
-                raise NotImplementedError("{}-sphere not supported.".format(dims - 1))
 
         elif topo == "euclid":
             self.rw_dist = dist.Rn_Normal
@@ -233,24 +201,21 @@ class ARp(ARNormal):
         super().__init__(transition, "euclid", dims, p, tensor_type)
 
 
-class dAR1(ARNormal):
+class tAR1(ARNormal):
     """
-    Torus and sphere (define on tangent space):
+    Torus (define on tangent space):
         Delta(z_t) = z_{t+1} - z_t = sum_{k=1}^{p-1} loc_k * Delta(z_{t-k}) + std*w_t
 
     if self.topo == 'euclid': # stationary linear
         rd = self.rw_dist(loc, std)
     elif self.topo == 'torus': # drift DS
         rd = self.rw_dist(loc, std)
-    elif self.topo == 'sphere':
-        rd = self.rw_dist(loc, std) # loc = x[:, :-1, :]
     """
 
     def __init__(
         self,
         loc,
         std,
-        topo,
         dims,
         learn_loc=False,
         learn_std=True,
@@ -281,13 +246,9 @@ class dAR1(ARNormal):
                 return x + self.loc, std
 
         transition = transition_(loc, std, learn_loc, learn_std, tensor_type)
-        super().__init__(transition, topo, dims, 1, tensor_type)
+        super().__init__(transition, 'torus', dims, 1, tensor_type)
 
-        if topo == "torus":
-            self.prior_dist = dist.Tn_Uniform
-
-        elif topo == "sphere":
-            self.prior_dist = dist.Sn_Uniform
+        self.prior_dist = dist.Tn_Uniform
 
     def ini_pd(self, ini_x):
         pd = self.prior_dist(self.transition.loc)  # dummy tensor
