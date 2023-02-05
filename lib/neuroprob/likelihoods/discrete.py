@@ -621,9 +621,7 @@ class Poisson(_count_model):
         :rtype: np.array
         """
         neuron = self._validate_neuron(neuron)
-        return torch.poisson(
-            torch.tensor(rate[:, neuron, :] * self.tbin.item())
-        ).numpy()
+        return np.random.poisson(rate[:, neuron, :] * self.tbin.item())
 
 
 class ZI_Poisson(_count_model):

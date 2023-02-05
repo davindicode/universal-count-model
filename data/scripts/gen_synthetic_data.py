@@ -13,69 +13,23 @@ sys.path.append("../../lib")  # access to library
 
 import neuroprob as nprb
 from neuroprob import base, utils
+from neuroprob.likelihoods.discrete import gen_CMP
 
 dev = nprb.inference.get_device(gpu=0)
 
 
 
-# components
-class Poisson_attention_bumps(base._input_mapping):
-    def __init__(
-        self, neurons, mu, sigma, A, A_0, tens_type=torch.float, active_dims=None
-    ):
-        super().__init__(
-            1, neurons, inv_link, tensor_type=tens_type, active_dims=active_dims
-        )
-
-        self.register_buffer(
-            "mu", torch.tensor(mu, dtype=self.tensor_type).to(self.dummy.device)
-        )
-        self.register_buffer(
-            "sigma", torch.tensor(sigma, dtype=self.tensor_type).to(self.dummy.device)
-        )
-        self.register_buffer(
-            "A", torch.tensor(A, dtype=self.tensor_type).to(self.dummy.device)
-        )
-        self.register_buffer(
-            "A_0", torch.tensor(A_0, dtype=self.tensor_type).to(self.dummy.device)
-        )
-
-    def compute_F(self, XZ):
-        cov = XZ[..., self.active_dims]
-        x = (cov[:, None, :, 0] - self.mu[None, :, None]) / self.sigma[None, :, None]
-        return self.A[None, :, None] * torch.exp(-(x**2)) + self.A_0[None, :, None], 0
-
-
-class mixture_composition(base._input_mapping):
-    """
-    Takes in identical base models to form a mixture model with custom functions.
-    Does not support models with variational uncertainties, ignores those.
-    """
-
-    def __init__(self, input_dims, mappings, comp_func, inv_link="relu"):
-        super().__init__(input_dims, mappings, inv_link)
-        self.comp_func = (
-            lambda x: (
-                (x[0] * sample_bin) ** (1 / torch.exp(x[1]))
-                - 0.5 * (1 / torch.exp(x[1]) - 1)
-            )
-            / sample_bin
-        )
-
-    def compute_F(self, XZ):
-        """
-        Note that the rates used for addition in the mixture model are evaluated as the
-        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
-        posterior mean. The difference between these quantities is small when the posterior
-        variance is small.
-
-        """
-        r_ = [base._inv_link[self.inv_link](m.compute_F(XZ)[0]) for m in self.mappings]
-        return self.comp_func(r_), 0
-    
-    
-
 # models
+def HDC_bumps(theta, A, invbeta, b, theta_0):
+    """
+    parameters have shape (neurons,)
+    :return:
+        rates of shape (..., neurons, eval_pts)
+    """
+    return A[:, None] * np.exp(
+        (np.cos(theta[..., None, :] - theta_0[:, None]) - 1) / invbeta[:, None]) + b[:, None]
+
+
 def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     """
     CMP with separate mu and nu parameter tuning curves
@@ -89,9 +43,6 @@ def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     ).T  # beta, phi_0 for theta modulation
     neurons = w.shape[0]
 
-    vm_mu = vonMises_bumps(neurons)
-    vm_mu.set_params(w)
-
     # dispersion tuning curve
     _angle_0 = np.random.permutation(
         angle_0
@@ -102,28 +53,13 @@ def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
         [np.log(_rate_0) + _beta, _beta * np.cos(_angle_0), _beta * np.sin(_angle_0)]
     ).T  # beta, phi_0 for theta modulation
 
-    log_nu = vonMises_bumps(neurons)
-    log_nu.set_params(w)
-
-    # sum for mu input
-    
-    rate_model = mixture_composition(
-        1, [log_mu, log_nu], comp_func, 
+    self.comp_func = (
+        lambda x: (
+            (x[0] * sample_bin) ** (1 / torch.exp(x[1]))
+            - 0.5 * (1 / torch.exp(x[1]) - 1)
+        )
+        / sample_bin
     )
-
-    # CMP process output
-    likelihood = nprb.likelihoods.COM_Poisson(
-        sample_bin, neurons, "relu", dispersion_mapping=log_nu
-    )
-
-    input_group = nprb.inference.input_group()
-    input_group.set_XZ(
-        [covariates], track_samples, batch_size=track_samples, trials=trials
-    )
-
-    # NLL model
-    glm = nprb.inference.VI_optimized(input_group, rate_model, likelihood)
-    glm.validate_model(likelihood_set=False)
     return glm
 
 
@@ -138,10 +74,6 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     w = np.stack(
         [np.log(rate_0), beta * np.cos(angle_0), beta * np.sin(angle_0)]
     ).T  # beta, phi_0 for theta modulation
-    neurons = w.shape[0]
-
-    vm_rate = nprb.rate_models.vonMises_bumps(neurons)
-    vm_rate.set_params(w)
 
     att_rate = attention_bumps(neurons, active_dims=[1])
     mu = np.random.randn(neurons)
@@ -150,20 +82,10 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     A_0 = np.ones(neurons) * 0.3
     att_rate.set_params(mu, sigma, A, A_0)
 
-    rate_model = product_model(2, [vm_rate, att_rate])
+    cov = XZ[..., self.active_dims]
+    x = (cov[:, None, :, 0] - self.mu[None, :, None]) / self.sigma[None, :, None]
+    return self.A[None, :, None] * torch.exp(-(x**2)) + self.A_0[None, :, None], 0
 
-    input_group = nprb.inference.input_group()
-    input_group.set_XZ(
-        [covariates], track_samples, batch_size=track_samples, trials=trials
-    )
-
-    # Poisson process output
-    likelihood = nprb.likelihoods.Poisson(sample_bin, neurons, "relu")
-    
-    # NLL model
-    glm = nprb.inference.VI_optimized(input_group, rate_model, likelihood)
-    glm.validate_model(likelihood_set=False)
-    return glm
 
 
 # GP trajectory
@@ -210,6 +132,7 @@ def main():
     
     # seed
     seed = args.seed
+    numpy.random.seed(seed)  # for calls to numpy.random
     rng = np.random.default_rng(seed)
     
     # Gaussian von Mises bump head direction model
@@ -240,10 +163,10 @@ def main():
         K = kernel(T, T)[0, 0]
         K.view(-1)[:: Tl + 1] += 1e-6
 
-    L = torch.cholesky(K)
-    eps = torch.randn(Tl).double()
-    v = L @ eps
-    a_t = v.data.numpy()
+    K = np.array(K)
+    L = np.linalg.cholesky(K)
+    eps = rng.normal(size=(Tl,))
+    a_t = L @ eps
 
     ### sample activity ###
     savedir = args.savedir
@@ -253,10 +176,8 @@ def main():
 
     covariates = [hd_t[None, :, None].repeat(trials, axis=0)]
     model = hCMP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
-    model.to(dev)
-
-    XZ, rate, _ = model.evaluate(0)
-    syn_train = model.likelihood.sample(rate[0].cpu().numpy(), XZ=XZ)
+    
+    syn_train = gen_CMP(rate[0].cpu().numpy(), )
 
     trial = 0
     bin_size = 1
