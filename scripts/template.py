@@ -214,7 +214,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                 p = nprb.inputs.priors.dAR1(
                     torch.tensor(0.0),
                     torch.tensor(4.0),
-                    "torus",
+                    "ring",
                     1,
                     tensor_type=tensor_type,
                 )
@@ -222,7 +222,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                 p = nprb.inputs.priors.dAR1(
                     torch.tensor([0.0] * d_z),
                     torch.tensor([4.0] * d_z),
-                    "torus",
+                    "ring",
                     d_z,
                     tensor_type=tensor_type,
                 )
@@ -230,7 +230,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
             v = nprb.inputs.variational.IndNormal(
                 torch.rand(timesamples, 1) * 2 * np.pi,
                 torch.ones((timesamples, 1)) * 0.1,  # 0.01
-                "torus",
+                "ring",
                 d_z,
                 tensor_type=tensor_type,
             )

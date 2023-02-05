@@ -268,7 +268,7 @@ def enc_used(model_dict, covariates, learn_mean):
 
         if len(ang_ls) > 0:
             ang_ls = np.array(ang_ls)
-            kernel_tuples += [("SE", "torus", torch.tensor(ang_ls))]
+            kernel_tuples += [("SE", "ring", torch.tensor(ang_ls))]
         if len(euclid_ls) > 0:
             euclid_ls = np.array(euclid_ls)
             kernel_tuples += [("SE", "euclid", torch.tensor(euclid_ls))]
@@ -327,7 +327,7 @@ def main():
     dataset_dict = get_dataset(
         args.data_type, args.bin_size, args.single_spikes, args.data_path
     )
-
+    
     template.train_model(dev, args, dataset_dict, enc_used)
 
 

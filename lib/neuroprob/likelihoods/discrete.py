@@ -231,9 +231,9 @@ class Parallel_Linear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
         self.channels = channels
-        self.weight = Parameter(torch.Tensor(channels, out_features, in_features))
+        self.weight = Parameter(torch.randn(channels, out_features, in_features))
         if bias:
-            self.bias = Parameter(torch.Tensor(channels, out_features))
+            self.bias = Parameter(torch.randn(channels, out_features))
         else:
             self.register_parameter("bias", None)
         self.reset_parameters()
@@ -249,20 +249,12 @@ class Parallel_Linear(nn.Module):
         """
         :param torch.tensor input: input of shape (batch, channels, in_dims)
         """
-        if self.channels > 1:  # separate weight matrices per channel
-            W = self.weight.expand(
-                1, self.channels, self.out_features, self.in_features
-            )[:, channels, ...]
-            B = (
-                0
-                if self.bias is None
-                else self.bias.expand(1, self.channels, self.out_features)[
-                    :, channels, :
-                ]
-            )
-        else:
-            W = self.weight[None, ...]
-            B = self.bias[None, ...]
+        W = self.weight[None, channels, ...]
+        B = (
+            0
+            if self.bias is None
+            else self.bias[None, channels, :]
+        )
 
         return (W * input[..., None, :]).sum(-1) + B
 
@@ -294,7 +286,7 @@ class Universal(base._likelihood):
         ).shape[-1]  # size of expanded vector
 
         mapping_net = Parallel_Linear(
-            expand_C, (max_count + 1), C
+            expand_C, (max_count + 1), neurons
         )  # single linear mapping
         self.add_module("mapping_net", mapping_net)  # maps from NxC to NxK
 
@@ -401,7 +393,7 @@ class Universal(base._likelihood):
         inps = F_mu.permute(0, 2, 1).reshape(samples * T, -1)  # (samplesxtime, in_dimsxchannels)
         inps = inps.view(inps.shape[0], -1, self.C)
         inps = torch.cat([f_(inps) for f_ in self.basis], dim=-1)
-        a = self.mapping_net(inps, neuron).view(out.shape[0], -1)  # # samplesxtime, NxK
+        a = self.mapping_net(inps, neuron).view(samples * T, -1)  # samplesxtime, NxK
         
         log_probs = self.lsoftm(a.view(samples, T, -1, self.K + 1).permute(0, 2, 1, 3))
         return log_probs

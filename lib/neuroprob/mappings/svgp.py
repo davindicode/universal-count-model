@@ -40,8 +40,8 @@ def p_F_U(
         already transformed by the inverse of ``Lff``
     :param float jitter: A small positive term which is added into the diagonal part of
         a covariance matrix to help stablize its Cholesky decomposition
-    :returns: loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
-    :rtype: tuple(torch.Tensor, torch.Tensor)
+    :return:
+        loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
     """
     N_u = X_u.size(-2)  # number of inducing, inducing points
     T = X.size(2)  # timesteps from KxNxTxD
@@ -335,8 +335,8 @@ class SVGP(base._input_mapping):
         X_u = self.Xu[None, ...] # K, N, T, D
 
         :param X: input regressors with shape (samples, timesteps, dims)
-        :returns: loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
-        :rtype: tuple(torch.Tensor, torch.Tensor), both of shape ()
+        :return:
+            loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
         """
         XZ = self._XZ(XZ)
         loc, var, self.Luu = p_F_U(
