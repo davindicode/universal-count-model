@@ -47,7 +47,7 @@ class prior_variational_pair(base._VI_object):
                 "Topologies in prior and variational distributions do not match"
             )
 
-    def sample(self, b, batch_info, samples, net_input, importance_weighted):
+    def sample(self, b, batch_info, samples):
         """ """
         batch_edge, batch_link, batch_initial = batch_info
 
@@ -56,7 +56,7 @@ class prior_variational_pair(base._VI_object):
         t_upper = batch_edge[b + 1]
 
         v_samp, nlog_q = self.variational.sample(
-            t_lower, t_upper, offs, samples, net_input
+            t_lower, t_upper, offs, samples
         )
         log_p = self.prior.log_p(v_samp, batch_initial[b])
         v_samp_ = v_samp[:, offs:]
@@ -65,14 +65,8 @@ class prior_variational_pair(base._VI_object):
             v_samp_ = v_samp_[:, None, :, None]
         else:
             v_samp_ = v_samp_[:, None, ...]
-
-        if importance_weighted:
-            qlog_pq = (log_p + nlog_q).view(
-                cov_samples, self.input_group.trials
-            ) - np.log(cov_samples)
-            nqlog_pq = -torch.logsumexp(qlog_pq, dim=-2).mean()  # mean over trials
-        else:
-            nqlog_pq = -(log_p + nlog_q).mean()  # mean over trials and MC samples
+            
+        nqlog_pq = -(log_p + nlog_q).mean()  # mean over trials and MC samples
 
         fac = self.tsteps / v_samp_.shape[-2]  # subsampling in batched mode
         return v_samp_, fac * nqlog_pq
@@ -103,10 +97,10 @@ class probabilistic_mapping(base._VI_object):
         if batch_info != self.input_group.batch_info:
             raise ValueError("Nested input batching structures do not match")
 
-    def sample(self, b, batch_info, samples, net_input, importance_weighted):
+    def sample(self, b, batch_info, samples):
         """ """
         t_, KL_prior = self.input_group.sample_XZ(
-            b, 1, average_nlq, net_input
+            b, 1,
         )  # samples, timesteps, dims
         KL_prior = KL_prior + self.mapping.KL_prior()
         f = self.mapping.sample_F(t_)  # batch, outdims, time
@@ -261,7 +255,7 @@ class input_group(_data_object):
 
         return _XZ
 
-    def sample_XZ(self, b, samples, net_input=None, importance_weighted=False):
+    def sample_XZ(self, b, samples):
         """
         Draw samples from the covariate distribution, provides an implementation of SVI.
         In [1] we amortise the variational parameters with a recognition network. Note the input
@@ -313,7 +307,7 @@ class input_group(_data_object):
 
             ### continuous latent variables ###
             v_samp, kl_p = in_.sample(
-                b, self.batch_info, samples, net_input, importance_weighted
+                b, self.batch_info, samples
             )
 
             KL_prior = KL_prior + kl_p

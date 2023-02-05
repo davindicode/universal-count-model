@@ -480,9 +480,6 @@ def var_var_MI(sample_bin, v1_t, v2_t, v1_bin, v2_bin):
     """
     MI analysis between covariates
     """
-
-    # Dirichlet prior on the empirical variable probabilites TODO? Bayesian point estimate
-
     # binning
     track_samples = len(v1_t)
     v1_bins = len(v1_bin) - 1

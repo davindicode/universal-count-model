@@ -69,24 +69,6 @@ def decorate_ax(
         ax.spines[name].set_visible(spines[k])
 
 
-def compute_mesh(grid_n, grid_size, func):
-    """
-    Create a uniformly spaced mesh over which to evaluate func.
-
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    :returns: figure and axis
-    :rtype: tuple
-    """
-    mesh = ()
-    for n, gn in enumerate(grid_n):
-        mesh += (np.linspace(grid_size[n][0], grid_size[n][1], gn),)
-
-    cc = np.meshgrid(*mesh)
-    z = np.stack(list(cc))
-    field = func(z)
-    return cc, field
-
 
 def add_colorbar(
     figax,
@@ -295,68 +277,6 @@ def cmap_arrow(
         end[0], end[1], c=1, s=(2 * head_size) ** 2, marker=tri, cmap=cmap, vmin=0
     )
 
-
-def visualize_field(
-    figax,
-    data,
-    grid_extent,
-    aspect="equal",
-    spike_pos=None,
-    cbar=True,
-    vmin=0,
-    vmax=None,
-    cmap="viridis",
-    ticktitle="firing rate (Hz)",
-    ticks=None,
-    ticklabels=None,
-    cbar_format=None,
-    cax=None,
-    cbar_size="5%",
-):
-    """ """
-    fig, ax = figax
-    if vmax is None:
-        vmax = data.max()
-
-    im = draw_2d(
-        figax,
-        data,
-        origin="lower",
-        cmap=cmap,
-        vmin=vmin,
-        vmax=vmax,
-        extent=(
-            grid_extent[0][0],
-            grid_extent[0][1],
-            grid_extent[1][0],
-            grid_extent[1][1],
-        ),
-        aspect=aspect,
-    )
-    decorate_ax(
-        ax,
-        xlim=[grid_extent[0][0], grid_extent[0][1]],
-        ylim=[grid_extent[1][0], grid_extent[1][1]],
-        spines=[False, False, False, False],
-    )
-    if cbar:
-        if cax is None:
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size=cbar_size, pad=0.2)
-
-        add_colorbar(
-            (fig, cax),
-            im,
-            ticktitle=ticktitle,
-            ticks=ticks,
-            ticklabels=ticklabels,
-            cbar_format=cbar_format,
-        )
-
-    if spike_pos is not None:
-        x_s, y_s = spike_pos
-        ax.scatter(x_s, y_s, s=1, color="r", zorder=1, alpha=0.7)
-    return im
 
 
 def plot_dispersion(ax, q_cdf, s_KS, labelx=False, labely=False):

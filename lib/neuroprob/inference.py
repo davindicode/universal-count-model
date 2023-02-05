@@ -69,7 +69,7 @@ class VI_optimized(nn.Module):
     ### model structure ###
     def set_model(self, input_group, mapping, likelihood):
         """
-        Model is p(Y|F)p(F|X,Z)p(Z).
+        Model is p(Y|F) p(F|X,Z) p(Z).
         Setting data corresponds to setting observed Y and X, setting p(Z) and initializing q(Z).
         Heteroscedastic likelihoods allow p(Y|F,X,Z).
         """
@@ -152,9 +152,7 @@ class VI_optimized(nn.Module):
         beta=1.0,
         cov_samples=1,
         ll_samples=10,
-        importance_weighted=False,
         ll_mode="MC",
-        lv_input=None,
     ):
         """
         Compute the rate and then spike train log likelihood.
@@ -173,23 +171,14 @@ class VI_optimized(nn.Module):
         :param bool enuerate_z: use enumerate for discrete latent (marginalizing out all states)
         :param torch.Tensor lv_input: input tensor for the latent variable computation (e.g. in the case
                                       of amortized inference we want self.likelihood.all_spikes)
-        :returns: variational approximation to negative marginal log likelihood
-        :rtype: torch.tensor
-
-        References:
-
-        [1] `Parametric Gaussian Process Regressors`, Martin Jankowiak, Geoff Pleiss, Jacob R. Gardner (2019)
-
-        [2] `Importance Weighted Autoencoders`, Yuri Burda, Roger Grosse, Ruslan Salakhutdinov (2015)
-
-        [3] `Deep Gaussian Processes with Importance-Weighted Variational Inference`,
-            Hugh Salimbeni, Vincent Dutordoir, James Hensman, Marc Peter Deisenroth (2019)
+        :returns:
+            variational approximation to negative marginal log likelihood
         """
         neuron = self.likelihood._validate_neuron(neuron)
 
         ### sample input ###
         XZ, KL_prior_in = self.input_group.sample_XZ(
-            b, cov_samples, lv_input, importance_weighted
+            b, cov_samples
         )
         if len(XZ.shape) > 4:  # normally (samples, outdims, timesteps, dims)
             enumeration = True
@@ -207,9 +196,7 @@ class VI_optimized(nn.Module):
                 XZ
             )  # mean and covariance of input mapping (samples, neurons, timesteps)
 
-        KL_prior_m = self.mapping.KL_prior(
-            importance_weighted
-        )  # prior may need quantities computed in compute_F, e.g. Luu, KTT
+        KL_prior_m = self.mapping.KL_prior()  # prior may need quantities computed in compute_F, e.g. Luu, KTT
         if ll_mode == "direct":
             F_var = None
 
@@ -218,21 +205,14 @@ class VI_optimized(nn.Module):
         fac = (
             self.likelihood.tsteps / batch_size
         )  # n_data/batch_size, as we subsample temporally (batching)
-        KL_prior_l = self.likelihood.KL_prior(importance_weighted)
+        KL_prior_l = self.likelihood.KL_prior()
 
         _nll, ws = self._nll(
             F, F_var, ll_samples, ll_mode, b, neuron, XZ, sum_time=True
         )
 
         ### bounds ###
-        if (
-            importance_weighted
-        ):  # mean is taken over the sample dimension i.e. log E_{q(f)q(z)}[...]
-            nll_term = -torch.logsumexp(
-                -_nll + torch.log(ws), dim=-2
-            )  # sum over MC/GH samples
-        else:
-            nll_term = (_nll * ws).sum(-2)  # sum over MC/GH samples
+        nll_term = (_nll * ws).sum(-2)  # sum over MC/GH samples
 
         nll_term = nll_term.mean()  # mean over trials
 
@@ -279,6 +259,7 @@ class VI_optimized(nn.Module):
                 history_size=history_size,
                 max_iter=max_iter,
             )
+            
         else:
             for key in opt_lr_dict:
                 if key == "default":
@@ -338,9 +319,7 @@ class VI_optimized(nn.Module):
         retain_graph=False,
         cov_samples=1,
         ll_samples=1,
-        importance_weighted=False,
         ll_mode="MC",
-        lv_input=None,
         callback=None,
     ):
         """
@@ -387,11 +366,9 @@ class VI_optimized(nn.Module):
                         b,
                         neuron,
                         beta=kl_anneal_func(anneal_t),
-                        importance_weighted=importance_weighted,
                         cov_samples=cov_samples,
                         ll_samples=ll_samples,
                         ll_mode=ll_mode,
-                        lv_input=lv_input,
                     )
 
                     if loss.requires_grad:

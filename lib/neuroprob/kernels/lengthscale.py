@@ -38,16 +38,11 @@ class Lengthscale(Kernel):
         if topology == "euclid":
             self.scaled_dist = self._scaled_dist
             self.square_scaled_dist = self._square_scaled_dist
-        elif topology == "torus_geodesic":
-            self.scaled_dist = self._scaled_dist_Tn
-            self.square_scaled_dist = self._square_scaled_dist_Tn
-        elif topology == "torus":
-            self.scaled_dist = self._scaled_dist_torus
-            self.square_scaled_dist = self._square_scaled_dist_torus
-        elif topology == "sphere":
-            self.scaled_dist = self._scaled_dist_sphere
-            self.square_scaled_dist = self._square_scaled_dist_sphere
-            lengthscale = lengthscale[:1, :]  # dummy dimensions
+            
+        elif topology == "ring":
+            self.scaled_dist = self._scaled_dist_ring
+            self.square_scaled_dist = self._square_scaled_dist_ring
+            
         else:
             raise NotImplementedError("Topology is not supported.")
 
@@ -90,11 +85,10 @@ class Lengthscale(Kernel):
         r"""
         Returns :math:`\|\frac{X-Z}{l}\|`.
         """
-        return safe_sqrt(Isotropy._square_scaled_dist(lengthscale, X, Z))
+        return safe_sqrt(Lengthscale._square_scaled_dist(lengthscale, X, Z))
 
-    # Torus cosine
     @staticmethod
-    def _square_scaled_dist_torus(lengthscale, X, Z):
+    def _square_scaled_dist_ring(lengthscale, X, Z):
         r"""
         Returns :math:`\|\frac{X-Z}{l}\|^2`.
         """
@@ -103,11 +97,11 @@ class Lengthscale(Kernel):
         return 2 * ((1 - torch.cos(U)) / (lengthscale[:, :, None, ...]) ** 2).sum(-1)
 
     @staticmethod
-    def _scaled_dist_torus(lengthscale, X, Z):
+    def _scaled_dist_ring(lengthscale, X, Z):
         r"""
         Returns :math:`\|\frac{X-Z}{l}\|`.
         """
-        return safe_sqrt(Isotropy._square_scaled_dist_torus(lengthscale, X, Z))
+        return safe_sqrt(Lengthscale._square_scaled_dist_ring(lengthscale, X, Z))
 
 
 

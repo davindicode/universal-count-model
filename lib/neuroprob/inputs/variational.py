@@ -18,13 +18,18 @@ class IndNormal(_variational):
     def __init__(
         self, mu, std, topo, dims, tensor_type=torch.float
     ):
+        """
+        :param torch.Tensor mu: variational mean of shape (time, (optionally) dims, (optionally) trials)
+        :param torch.Tensor std: variational std of shape (time, (optionally) dims, (optionally) trials)
+        :param str topo: topology type ('euclid' or 'ring')
+        """
         super().__init__(tensor_type, mu.shape[0], dims)
         self.topo = topo
         self.lf = lambda x: F.softplus(x)
         self.lf_inv = lambda x: torch.where(x > 30, x, torch.log(torch.exp(x) - 1))
 
         ### variational ###
-        if topo == "torus":
+        if topo == "ring":
             self.variational = dist.Tn_Normal
         
         elif topo == "euclid":
@@ -44,9 +49,9 @@ class IndNormal(_variational):
             "finv_std", Parameter(self.lf_inv(std.type(self.tensor_type)))
         )  # std
 
-    def sample(self, t_lower, t_upper, offs, samples, net_input):
+    def sample(self, t_lower, t_upper, offs, samples):
         """ """
-        mu, std = self.eval_moments(t_lower, t_upper, net_input)
+        mu, std = self.eval_moments(t_lower, t_upper)
         vd = self.variational(mu, std)  # .to_event()
         v_samp = vd((samples,))  # samples, time, event_dims
         # nlog_q = self.nlog_q(vd, v_samp, offs)
@@ -55,7 +60,7 @@ class IndNormal(_variational):
 
         return v_samp, nlog_q
 
-    def eval_moments(self, t_lower, t_upper, net_input):
+    def eval_moments(self, t_lower, t_upper):
         # (time, dims), (,trial) only if > 1
         # if self.trials == 1 and self.dims == 1: # standard one dimensional arrays, fast
         # else explicit event (and trial) dimension
@@ -72,6 +77,10 @@ class Delta(_variational):
     """
 
     def __init__(self, mu, topo, dims, tensor_type=torch.float):
+        """
+        :param torch.Tensor mu: variational mean of shape (time, (optionally) dims, (optionally) trials)
+        :param str topo: topology type ('euclid' or 'ring')
+        """
         super().__init__(tensor_type, mu.shape[0], dims)
         self.topo = topo
 
@@ -85,13 +94,15 @@ class Delta(_variational):
 
         self.register_parameter("mu", Parameter(mu.type(self.tensor_type)))  # mean
 
-    def sample(self, t_lower, t_upper, offs, samples, net_input):
+    def sample(self, t_lower, t_upper, offs, samples):
         return
 
-    def eval_moments(self, t_lower, t_upper, net_input):
-        # (time, dims), (,trial) only if > 1
-        # if self.trials == 1 and self.dims == 1: # standard one dimensional arrays, fast
-        # else explicit event (and trial) dimension
+    def eval_moments(self, t_lower, t_upper):
+        """
+        (time, dims) if dims > 1 or (time, dims, trial) if trials > 1, have explicit event (and trial) dimension
+        otherwise standard one dimensional arrays, fast
+        """
+        
         mu, std = self.mu[t_lower:t_upper, ...], self.lf(
             self.finv_std[t_lower:t_upper, ...]
         )  # time, (dims, trial)

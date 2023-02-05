@@ -11,7 +11,6 @@ from torch.nn.parameter import Parameter
 
 sys.path.append("../../lib")  # access to library
 
-
 import neuroprob as nprb
 from neuroprob import base, utils
 
@@ -19,150 +18,15 @@ dev = nprb.inference.get_device(gpu=0)
 
 
 
-sys.path.append("../../scripts")
-
-import template
-
-
-
-### mixture rate models ###
-class _mappings(base._input_mapping):
-    """ """
-
-    def __init__(self, input_dims, mappings):
-        """
-        Additive fields, so exponential inverse link function.
-        All models should have same the input and output structure.
-
-        :params list models: list of base models, each initialized separately
-        """
-        self.maps = len(mappings)
-        if self.maps < 2:
-            raise ValueError("Need to have more than one component mapping")
-
-        # covar_type = None # intially no uncertainty in model
-        for m in range(len(mappings)):  # consistency check
-            if m < len(mappings) - 1:  # consistency check
-                if mappings[m].out_dims != mappings[m + 1].out_dims:
-                    raise ValueError("Mappings do not match in output dimensions")
-                if mappings[m].tensor_type != mappings[m + 1].tensor_type:
-                    raise ValueError("Tensor types of mappings do not match")
-
-        super().__init__(input_dims, mappings[0].out_dims, mappings[0].tensor_type)
-
-        self.mappings = nn.ModuleList(mappings)
-
-    def constrain(self):
-        for m in self.mappings:
-            m.constrain()
-
-    def KL_prior(self):
-        KL_prior = 0
-        for m in self.mappings:
-            KL_prior = KL_prior + m.KL_prior()
-        return KL_prior
-
-
-class product_model(_mappings):
-    """
-    Takes in identical base models to form a product model.
-    """
-
-    def __init__(self, input_dims, mappings):
-        super().__init__(input_dims, mappings)
-
-    def compute_F(self, XZ):
-        """
-        Note that the rates used for multiplication in the product model are evaluated as the
-        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
-        posterior mean. The difference between these quantities is small when the posterior
-        variance is small.
-
-        The exact method would be to use MC sampling.
-
-        :param torch.Tensor cov: input covariates of shape (sample, time, dim)
-        """
-        rate_ = []
-        var_ = []
-        for m in self.mappings:
-            F_mu, F_var = m.compute_F(XZ)
-            rate_.append(m.f(F_mu))
-            if isinstance(F_var, numbers.Number):
-                var_.append(0)
-                continue
-            var_.append(
-                base._inv_link_deriv[self.inv_link](F_mu) ** 2 * F_var
-            )  # delta method
-
-        tot_var = 0
-        rate_ = torch.stack(rate_, dim=0)
-        for m, var in enumerate(var_):
-            ind = torch.tensor([i for i in range(rate_.shape[0]) if i != m])
-            if isinstance(var, numbers.Number) is False:
-                tot_var = tot_var + (rate_[ind]).prod(dim=0) ** 2 * var
-
-        return rate_.prod(dim=0), tot_var
-
-
-class mixture_composition(_mappings):
-    """
-    Takes in identical base models to form a mixture model with custom functions.
-    Does not support models with variational uncertainties, ignores those.
-    """
-
-    def __init__(self, input_dims, mappings, comp_func, inv_link="relu"):
-        super().__init__(input_dims, mappings, inv_link)
-        self.comp_func = comp_func
-
-    def compute_F(self, XZ):
-        """
-        Note that the rates used for addition in the mixture model are evaluated as the
-        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
-        posterior mean. The difference between these quantities is small when the posterior
-        variance is small.
-
-        """
-        r_ = [base._inv_link[self.inv_link](m.compute_F(XZ)[0]) for m in self.mappings]
-        return self.comp_func(r_), 0
-
-    
-    
-class vonMises_bumps(nprb.mappings.custom_wrapper):
-    """
-    Angular (head direction/theta) variable GLM
-    """
-
-    def __init__(self, neurons, tensor_type=torch.float, active_dims=None):
-        super().__init__(
-            1, neurons, tensor_type=tensor_type, active_dims=active_dims
-        )
-
-    def set_params(self, w):
-        self.w.data = w.type(self.tensor_type).to(self.dummy.device)
-
-    def compute_F(self, XZ):
-        XZ = self._XZ(XZ)
-        theta = XZ[..., 0]
-        g = torch.stack(
-            (
-                torch.ones_like(theta, device=theta.device),
-                torch.cos(theta),
-                torch.sin(theta),
-            ),
-            dim=-1,
-        )
-        return (g * self.w[None, :, None, :]).sum(-1), 0
-
-
-class attention_bumps(nprb.mappings.custom_wrapper):
+# components
+class Poisson_attention_bumps(base._input_mapping):
     def __init__(
-        self, neurons, tens_type=torch.float, active_dims=None
+        self, neurons, mu, sigma, A, A_0, tens_type=torch.float, active_dims=None
     ):
         super().__init__(
             1, neurons, inv_link, tensor_type=tens_type, active_dims=active_dims
         )
 
-    def set_params(self, mu, sigma, A, A_0):
         self.register_buffer(
             "mu", torch.tensor(mu, dtype=self.tensor_type).to(self.dummy.device)
         )
@@ -181,6 +45,35 @@ class attention_bumps(nprb.mappings.custom_wrapper):
         x = (cov[:, None, :, 0] - self.mu[None, :, None]) / self.sigma[None, :, None]
         return self.A[None, :, None] * torch.exp(-(x**2)) + self.A_0[None, :, None], 0
 
+
+class mixture_composition(base._input_mapping):
+    """
+    Takes in identical base models to form a mixture model with custom functions.
+    Does not support models with variational uncertainties, ignores those.
+    """
+
+    def __init__(self, input_dims, mappings, comp_func, inv_link="relu"):
+        super().__init__(input_dims, mappings, inv_link)
+        self.comp_func = (
+            lambda x: (
+                (x[0] * sample_bin) ** (1 / torch.exp(x[1]))
+                - 0.5 * (1 / torch.exp(x[1]) - 1)
+            )
+            / sample_bin
+        )
+
+    def compute_F(self, XZ):
+        """
+        Note that the rates used for addition in the mixture model are evaluated as the
+        quantities :math:`f(\mathbb{E}[a])`, different to :math:`\mathbb{E}[f(a)]` that is the
+        posterior mean. The difference between these quantities is small when the posterior
+        variance is small.
+
+        """
+        r_ = [base._inv_link[self.inv_link](m.compute_F(XZ)[0]) for m in self.mappings]
+        return self.comp_func(r_), 0
+    
+    
 
 # models
 def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
@@ -213,13 +106,7 @@ def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
     log_nu.set_params(w)
 
     # sum for mu input
-    comp_func = (
-        lambda x: (
-            (x[0] * sample_bin) ** (1 / torch.exp(x[1]))
-            - 0.5 * (1 / torch.exp(x[1]) - 1)
-        )
-        / sample_bin
-    )
+    
     rate_model = mixture_composition(
         1, [log_mu, log_nu], comp_func, 
     )
@@ -229,9 +116,9 @@ def CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
         sample_bin, neurons, "relu", dispersion_mapping=log_nu
     )
 
-    input_group = nprb.inference.input_group(1, [(None, None, None, 1)])
+    input_group = nprb.inference.input_group()
     input_group.set_XZ(
-        covariates, track_samples, batch_size=track_samples, trials=trials
+        [covariates], track_samples, batch_size=track_samples, trials=trials
     )
 
     # NLL model
@@ -265,18 +152,46 @@ def IP_bumps(sample_bin, track_samples, covariates, neurons, trials=1):
 
     rate_model = product_model(2, [vm_rate, att_rate])
 
-    input_group = nprb.inference.input_group(2, [(None, None, None, 1)] * 2)
+    input_group = nprb.inference.input_group()
     input_group.set_XZ(
-        covariates, track_samples, batch_size=track_samples, trials=trials
+        [covariates], track_samples, batch_size=track_samples, trials=trials
     )
 
     # Poisson process output
     likelihood = nprb.likelihoods.Poisson(sample_bin, neurons, "relu")
-
+    
     # NLL model
     glm = nprb.inference.VI_optimized(input_group, rate_model, likelihood)
     glm.validate_model(likelihood_set=False)
     return glm
+
+
+# GP trajectory
+def rbf_kernel(x):
+    return np.exp(-.5 * (x**2))
+
+
+def stationary_GP_trajectories(Tl, dt, trials, tau_list, eps, kernel_func, jitter=1e-9):
+    """
+    generate smooth GP input
+    """
+    tau_list_ = tau_list*trials
+    out_dims = len(tau_list_)
+    
+    l = np.array(tau_list_)[:, None]
+    v = np.ones(out_dims)
+
+    T = np.arange(Tl)[None, :]*dt / l
+    dT = T[:, None, :] - T[..., None] # (tr, T, T)
+    K = kernel_func(dT)
+    K.reshape(out_dims, -1)[:, ::Tl+1] += jitter
+    
+    L = np.linalg.cholesky(K)
+    v = (L @ eps[..., None])[..., 0]
+    a_t = v.reshape(trials, -1, Tl)
+    return a_t # trials, tau_arr, time
+
+
 
 
 ### main ###
@@ -295,7 +210,7 @@ def main():
     
     # seed
     seed = args.seed
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     
     # Gaussian von Mises bump head direction model
     sample_bin = 0.1  # 100 ms
@@ -337,11 +252,11 @@ def main():
     neurons = 50
 
     covariates = [hd_t[None, :, None].repeat(trials, axis=0)]
-    glm = CMP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
-    glm.to(dev)
+    model = hCMP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
+    model.to(dev)
 
-    XZ, rate, _ = glm.evaluate(0)
-    syn_train = glm.likelihood.sample(rate[0].cpu().numpy(), XZ=XZ)
+    XZ, rate, _ = model.evaluate(0)
+    syn_train = model.likelihood.sample(rate[0].cpu().numpy(), XZ=XZ)
 
     trial = 0
     bin_size = 1
@@ -357,7 +272,7 @@ def main():
     rhd_t = rhd_t % (2 * np.pi)
 
     np.savez_compressed(savedir + "hCMP_seed{}".format(seed), spktrain=rc_t, rhd_t=rhd_t, tbin=tbin)
-    torch.save({"model": glm.state_dict()}, savedir + "hCMP_seed{}.pt".format(seed))
+    torch.save({"model": model.state_dict()}, savedir + "hCMP_seed{}.pt".format(seed))
 
     # modulated Poisson
     neurons = 50
@@ -366,11 +281,11 @@ def main():
         hd_t[None, :, None].repeat(trials, axis=0),
         a_t[None, :, None].repeat(trials, axis=0),
     ]
-    glm = IP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
-    glm.to(dev)
+    model = IP_bumps(sample_bin, track_samples, covariates, neurons, trials=trials)
+    model.to(dev)
 
-    _, rate, _ = glm.evaluate(0)
-    syn_train = glm.likelihood.sample(rate[0].cpu().numpy())
+    _, rate, _ = model.evaluate(0)
+    syn_train = model.likelihood.sample(rate[0].cpu().numpy())
 
     trial = 0
     bin_size = 1
@@ -388,7 +303,7 @@ def main():
     np.savez_compressed(
         savedir + "IP_seed{}".format(seed), spktrain=rc_t, rhd_t=rhd_t, ra_t=ra_t, tbin=tbin
     )
-    torch.save({"model": glm.state_dict()}, savedir + "IP_seed{}.pt".format(seed))
+    torch.save({"model": model.state_dict()}, savedir + "IP_seed{}.pt".format(seed))
 
 
 if __name__ == "__main__":

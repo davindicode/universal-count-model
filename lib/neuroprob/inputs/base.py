@@ -2,7 +2,9 @@ import torch.nn as nn
 
 
 class _prior(nn.Module):
-    """ """
+    """
+    base class for prior distributions
+    """
 
     def __init__(self, p, tensor_type, dims):
         super().__init__()
@@ -19,7 +21,9 @@ class _prior(nn.Module):
         
         
 class _variational(nn.Module):
-    """ """
+    """
+    base class for variational distributions
+    """
 
     def __init__(self, tensor_type, tsteps, dims):
         super().__init__()
@@ -33,14 +37,14 @@ class _variational(nn.Module):
     def eval_moments(self, t_lower, t_upper, net_input):
         raise NotImplementedError
 
-    def sample(self, t_lower, t_upper, offs, samples, net_input):
+    def sample(self, t_lower, t_upper, offs, samples):
         raise NotImplementedError
 
 
         
 class _VI_object(nn.Module):
     """
-    input VI objects
+    input objects for variational inference
     """
 
     def __init__(self, dims, tensor_type):
@@ -53,7 +57,7 @@ class _VI_object(nn.Module):
         """ """
         raise NotImplementedError
 
-    def sample(self, b, batch_info, samples, lv_input, importance_weighted):
+    def sample(self, b, batch_info, samples):
         """
         :returns: tuple of (samples of :math:`q(z)`, KL terms)
         """

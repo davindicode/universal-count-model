@@ -1,9 +1,11 @@
 import math
+from numbers import Number 
 
 import torch
 
 import torch.distributions as dist
 from torch.distributions import constraints
+from torch.distributions.utils import broadcast_all, _standard_normal
 
 from .base import TorchDistribution
 

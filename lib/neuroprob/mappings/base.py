@@ -94,7 +94,7 @@ class _input_mapping(nn.Module):
         """
         raise NotImplementedError
 
-    def KL_prior(self, importance_weighted):
+    def KL_prior(self):
         """
         Prior on the model parameters as regularizer in the loss. Model parameters are integrated out
         approximately using the variational inference. This leads to Kullback-Leibler divergences in the

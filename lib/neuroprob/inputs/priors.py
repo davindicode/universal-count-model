@@ -31,7 +31,7 @@ class IndNormal(_prior):
         self.lf_inv = lambda x: torch.where(x > 30, x, torch.log(torch.exp(x) - 1))
 
         ### prior ###
-        if topo == "torus":
+        if topo == "ring":
             self.prior_dist = dist.Tn_Normal
             
         elif topo == "euclid":
@@ -73,7 +73,7 @@ class IndUniform(_prior):
         super().__init__(0, tensor_type, dims)
         self.topo = topo
 
-        if topo == "torus":
+        if topo == "ring":
             self.prior_dist = dist.Tn_Uniform
             
         elif topo == "euclid":
@@ -111,7 +111,7 @@ class ARNormal(_prior):
         super().__init__(p, tensor_type, dims)
         self.topo = topo
 
-        if topo == "torus":
+        if topo == "ring":
             self.rw_dist = dist.Tn_Normal
 
         elif topo == "euclid":
@@ -203,12 +203,12 @@ class ARp(ARNormal):
 
 class tAR1(ARNormal):
     """
-    Torus (define on tangent space):
+    ring (define on tangent space):
         Delta(z_t) = z_{t+1} - z_t = sum_{k=1}^{p-1} loc_k * Delta(z_{t-k}) + std*w_t
 
     if self.topo == 'euclid': # stationary linear
         rd = self.rw_dist(loc, std)
-    elif self.topo == 'torus': # drift DS
+    elif self.topo == 'ring': # drift DS
         rd = self.rw_dist(loc, std)
     """
 
@@ -246,7 +246,7 @@ class tAR1(ARNormal):
                 return x + self.loc, std
 
         transition = transition_(loc, std, learn_loc, learn_std, tensor_type)
-        super().__init__(transition, 'torus', dims, 1, tensor_type)
+        super().__init__(transition, 'ring', dims, 1, tensor_type)
 
         self.prior_dist = dist.Tn_Uniform
 

@@ -73,7 +73,7 @@ def p_F_U(
 
     if whiten:
         v_4D = f_loc[None, ...].repeat(K, 1, 1, 1)  # K, N, N_u, N_
-        W = Kfs.triangular_solve(Lff, upper=False)[0]
+        W = torch.linalg.solve_triangular(Lff, Kfs, upper=False)
         W = W.view(N_l, N_u, K, T).permute(2, 0, 3, 1)  # K, N, T, N_u
         if f_scale_tril is not None:
             S_4D = f_scale_tril[None, ...].repeat(K, 1, 1, 1)
@@ -83,7 +83,7 @@ def p_F_U(
         if f_scale_tril is not None:
             pack = torch.cat((pack, f_scale_tril), dim=-1)
 
-        Lffinv_pack = pack.triangular_solve(Lff, upper=False)[0]
+        Lffinv_pack = torch.linalg.solve_triangular(Lff, pack, upper=False)
         v_4D = Lffinv_pack[None, :, :, : f_loc.size(-1)].repeat(
             K, 1, 1, 1
         )  # K, N, N_u, N_
@@ -267,7 +267,7 @@ class SVGP(base._input_mapping):
         self.add_module("induc_pts", inducing_points)
         self.Luu = None  # needs to be computed in sample_F/compute_F
 
-    def KL_prior(self, importance_weighted):
+    def KL_prior(self):
         """
         Ignores neuron, computes over all the output dimensions
         Note self.Luu is computed in compute_F or sample_F called before
@@ -359,33 +359,28 @@ class SVGP(base._input_mapping):
         """
         XZ = self._XZ(XZ)
 
-        if XZ.shape[-1] < 1000:  # sample naive way
-            loc, cov, self.Luu = p_F_U(
-                XZ,
-                self.induc_pts.Xu,
-                self.kernel,
-                self.induc_pts.u_loc,
-                self.induc_pts.u_scale_tril,
-                compute_cov=True,
-                full_cov=True,
-                whiten=self.whiten,
-                jitter=self.jitter,
+        loc, cov, self.Luu = p_F_U(
+            XZ,
+            self.induc_pts.Xu,
+            self.kernel,
+            self.induc_pts.u_loc,
+            self.induc_pts.u_scale_tril,
+            compute_cov=True,
+            full_cov=True,
+            whiten=self.whiten,
+            jitter=self.jitter,
+        )
+        cov.view(-1, cov.shape[-1] ** 2)[:, :: cov.shape[-1] + 1] += self.jitter
+        
+        L = torch.linalg.cholesky(cov.double()).type(self.tensor_type)
+
+        if samples > 1:  # expand
+            XZ = XZ.repeat(samples, 1, 1, 1)
+            L = L.repeat(samples)
+
+        if eps is None:  # sample random vector
+            eps = torch.randn(
+                XZ.shape[:-1], dtype=self.tensor_type, device=cov.device
             )
-            cov.view(-1, cov.shape[-1] ** 2)[:, :: cov.shape[-1] + 1] += self.jitter
-            L = cov.double().cholesky().type(self.tensor_type)
 
-            if samples > 1:  # expand
-                XZ = XZ.repeat(samples, 1, 1, 1)
-                L = L.repeat(samples)
-
-            if eps is None:  # sample random vector
-                eps = torch.randn(
-                    XZ.shape[:-1], dtype=self.tensor_type, device=cov.device
-                )
-
-            return loc + self.mean_function(XZ) + (L * eps[..., None, :]).sum(-1)
-
-        else:  # decoupled sampling
-            eps_f, eps_u = eps
-
-            return loc + self.mean_function(XZ) + (L * eps[..., None, :]).sum(-1)
+        return loc + self.mean_function(XZ) + (L * eps[..., None, :]).sum(-1)

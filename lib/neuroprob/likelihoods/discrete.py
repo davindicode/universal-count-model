@@ -13,6 +13,20 @@ from . import base
 
 
 
+def gen_ZIP(mu, alpha):
+    zero_mask = np.random.binomial(1, alpha)
+    return (1.0 - zero_mask) * np.random.poisson(mu)
+
+
+
+def gen_NB(mu, r):
+    s = np.random.gamma(
+        r, mu / r
+    )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
+    return np.random.poisson(s)
+
+
+
 def gen_CMP(mu, nu, max_rejections=1000):
     """
     Use rejection sampling to sample from the COM-Poisson count distribution. [1]
@@ -697,10 +711,8 @@ class ZI_Poisson(_count_model):
                     .numpy()
                 )
 
-        zero_mask = np.random.binomial(1, alpha_)
-        return (1.0 - zero_mask) * torch.poisson(
-            torch.tensor(rate_ * self.tbin.item())
-        ).numpy()
+        return gen_ZIP(rate_ * self.tbin.item(), alpha_)
+
 
 
 class hZI_Poisson(ZI_Poisson):
@@ -845,10 +857,8 @@ class Negative_binomial(_count_model):
                 disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
             r_ = 1.0 / (disp.cpu().numpy() + 1e-12)
 
-        s = np.random.gamma(
-            r_, rate_ * self.tbin.item() / r_
-        )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
-        return torch.poisson(torch.tensor(s)).numpy()
+        return gen_NB(rate_ * self.tbin.item(), r_)
+
 
 
 class hNegative_binomial(Negative_binomial):

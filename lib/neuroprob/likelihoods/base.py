@@ -65,7 +65,7 @@ class _likelihood(_data_object):
         self.setup_batching(batch_info, spikes.shape[-1], spikes.shape[0])
         self.all_spikes = spikes.type(self.tensor_type)
 
-    def KL_prior(self, importance_weighted):
+    def KL_prior(self):
         """ """
         return 0
 

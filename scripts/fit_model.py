@@ -279,12 +279,12 @@ def enc_used(model_dict, covariates, learn_mean):
         ind_list += latent_u
 
         # objects
-        kernelobj, constraints = template.create_kernel(kernel_tuples, "exp", tensor_type)
+        kernelobj = template.create_kernel(kernel_tuples, "exp", tensor_type)
 
         Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
         inpd = Xu.shape[-1]
         inducing_points = nprb.mappings.inducing_points(
-            out_dims, Xu, constraints, tensor_type=tensor_type
+            out_dims, Xu, tensor_type=tensor_type
         )
 
         mapping = nprb.mappings.SVGP(
