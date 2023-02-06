@@ -20,7 +20,7 @@ The baseline models, along with the Universal Count Model (UCM) proposed in our 
 
 
 
-## Reproducing the results in the paper
+## Reproducing results
 
 
 #### 1. cd into lib/ and install the "neuroprob" library
@@ -63,7 +63,7 @@ Note that there are separate notebooks for synthetic (validation) and real (HDC)
 All trained models are stored in the ```scripts/checkpoint/``` folder.
 
 
-##### Experiments in the paper
+##### Experiments
 All commands needed for real data and synthetic data experiments are put into bash files ```run_HDC.sh``` and ```run_synthetic.sh``` for convenience.
 Inside the bash files, commands are grouped by categories, such as regression models or latent variable models.
 If you wish to run different modes or cross-validation runs grouped together above in parallel rather than sequentially, run the respective command with only a single `--modes` or `--cv` argument each time and repeat while looping through the list.

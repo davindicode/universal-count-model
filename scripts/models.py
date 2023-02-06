@@ -23,27 +23,7 @@ from neuroprob import kernels, utils
 ### data ###
 def get_dataset(data_type, bin_size, path):
 
-    if data_type == "hCMP" or data_type == "IP":  # synthetic
-        assert bin_size == 1
-        metainfo = {}
-
-        if data_type == "hCMP":
-            syn_data = np.load(path + "hCMP_HDC.npz")
-            rcov = {
-                "hd": syn_data["rhd_t"],
-            }
-
-        elif data_type == "IP":
-            syn_data = np.load(path + "IP_HDC.npz")
-            rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
-
-        rc_t = syn_data["spktrain"]
-        tbin = syn_data["tbin"].item()
-
-        resamples = rc_t.shape[1]
-        units_used = rc_t.shape[0]
-
-    elif data_type == "th1" or data_type == "th1leftover":
+    if data_type == "th1" or data_type == "th1leftover":
         data = np.load(path + "Mouse28_140313_wake.npz")
 
         if data_type == "th1":
@@ -93,6 +73,25 @@ def get_dataset(data_type, bin_size, path):
         metainfo = {
             "neuron_regions": neuron_regions,
         }
+        
+    else:  # synthetic
+        assert bin_size == 1
+        syn_data = np.load(path + data_type + ".npz")
+        metainfo = {}
+
+        if data_type[:4] == "hCMP":
+            rcov = {
+                "hd": syn_data["rhd_t"],
+            }
+
+        elif data_type[:5] == "modIP":
+            rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
+
+        rc_t = syn_data["spktrain"]
+        tbin = syn_data["tbin"].item()
+
+        resamples = rc_t.shape[1]
+        units_used = rc_t.shape[0]
 
     name = data_type
 

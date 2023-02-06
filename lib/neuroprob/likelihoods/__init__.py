@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from .continuous import Gaussian, hGaussian, Multivariate_Gaussian
+from .continuous import Gaussian, hGaussian
 from .discrete import (
     Bernoulli,
     COM_Poisson,

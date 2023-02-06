@@ -179,5 +179,5 @@ class _likelihood(_data_object):
     def objective(self, F_mu, F_var, X, b, neuron, samples, mode):
         raise NotImplementedError
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         raise NotImplementedError

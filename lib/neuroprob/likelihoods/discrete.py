@@ -13,21 +13,25 @@ from . import base
 
 
 
-def gen_ZIP(mu, alpha):
-    zero_mask = np.random.binomial(1, alpha)
-    return (1.0 - zero_mask) * np.random.poisson(mu)
+def gen_categorical(rng, p):
+    return (p.cumsum(-1) >= rng.uniform(size=p.shape[:-1])[..., None]).argmax(-1)
+
+
+def gen_ZIP(rng, lamb, alpha):
+    zero_mask = rng.binomial(1, alpha)
+    return (1.0 - zero_mask) * rng.poisson(lamb)
 
 
 
-def gen_NB(mu, r):
+def gen_NB(rng, lamb, r):
     s = np.random.gamma(
-        r, mu / r
+        r, lamb / r
     )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
-    return np.random.poisson(s)
+    return rng.poisson(s)
 
 
 
-def gen_CMP(mu, nu, max_rejections=1000):
+def gen_CMP(rng, lamb, nu, max_rejections=1000):
     """
     Use rejection sampling to sample from the COM-Poisson count distribution. [1]
 
@@ -43,29 +47,29 @@ def gen_CMP(mu, nu, max_rejections=1000):
     :returns: inhomogeneous Poisson process sample
     :rtype: numpy.array
     """
-    trials = mu.shape[0]
-    neurons = mu.shape[1]
-    Y = np.empty(mu.shape)
+    trials = lamb.shape[0]
+    neurons = lamb.shape[1]
+    Y = np.empty(lamb.shape)
 
     for tr in range(trials):
         for n in range(neurons):
-            mu_, nu_ = mu[tr, n, :], nu[tr, n, :]
+            lamb_, nu_ = lamb[tr, n, :], nu[tr, n, :]
 
             # Poisson
             k = 0
             left_bins = np.where(nu_ >= 1)[0]
             while len(left_bins) > 0:
-                mu__, nu__ = mu_[left_bins], nu_[left_bins]
-                y_dash = torch.poisson(torch.tensor(mu__)).numpy()
-                _mu_ = np.floor(mu__)
+                lamb__, nu__ = lamb_[left_bins], nu_[left_bins]
+                y_dash = rng.poisson(lamb__)
+                _lamb_ = np.floor(lamb__)
                 alpha = (
-                    mu__ ** (y_dash - _mu_)
-                    / scsps.factorial(y_dash)
-                    * scsps.factorial(_mu_)
+                    lamb__ ** (y_dash - _lamb_)
+                    / factorial(y_dash)
+                    * factorial(_lamb_)
                 ) ** (nu__ - 1)
 
-                u = np.random.rand(*mu__.shape)
-                selected = u <= alpha
+                u = rng.uniform(size=lamb__.shape)
+                selected = (u <= alpha)
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -77,18 +81,18 @@ def gen_CMP(mu, nu, max_rejections=1000):
             k = 0
             left_bins = np.where(nu_ < 1)[0]
             while len(left_bins) > 0:
-                mu__, nu__ = mu_[left_bins], nu_[left_bins]
-                p = 2 * nu__ / (2 * mu__ * nu__ + 1 + nu__)
-                u_0 = np.random.rand(*p.shape)
+                lamb__, nu__ = lamb_[left_bins], nu_[left_bins]
+                p = 2 * nu__ / (2 * lamb__ * nu__ + 1 + nu__)
+                u_0 = rng.uniform(size=p.shape)
 
                 y_dash = np.floor(np.log(u_0) / np.log(1 - p))
-                a = np.floor(mu__ / (1 - p) ** (1 / nu__))
+                a = np.floor(lamb__ / (1 - p) ** (1 / nu__))
                 alpha = (1 - p) ** (a - y_dash) * (
-                    mu__ ** (y_dash - a) / scsps.factorial(y_dash) * scsps.factorial(a)
+                    lamb__ ** (y_dash - a) / factorial(y_dash) * factorial(a)
                 ) ** nu__
 
-                u = np.random.rand(*mu__.shape)
-                selected = u <= alpha
+                u = rng.uniform(size=lamb__.shape)
+                selected = (u <= alpha)
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -471,7 +475,7 @@ class Universal(base._likelihood):
         nll = -(tar * logp).sum(-1)
         return nll.sum(1), ws
 
-    def sample(self, F_mu, neuron, XZ=None):
+    def sample(self, F_mu, neuron, XZ=None, rng=None):
         """
         Sample from the categorical distribution.
 
@@ -480,13 +484,16 @@ class Universal(base._likelihood):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         F_dims = self._neuron_to_F(neuron)
         log_probs = self.get_logp(
             torch.tensor(F_mu[:, F_dims, :], dtype=self.tensor_type)
         )
-        c_dist = dist.Categorical(logits=log_probs)
         cnt_prob = torch.exp(log_probs)
-        return c_dist.sample().numpy()
+        
+        return gen_categorical(rng, cnt_prob.cpu().numpy())
 
 
 # count distributions
@@ -529,7 +536,7 @@ class Bernoulli(_count_model):
         nll = -(n_l_rates + tfact + (1 - spikes) * torch.log(1 - rates * self.tbin))
         return nll.sum(1)
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Takes into account the quantization bias if we sample IPP with dilation factor.
 
@@ -537,9 +544,12 @@ class Bernoulli(_count_model):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
         p = rate[:, neuron, :] * self.tbin.item()
-        return np.random.binomial(1, p)
+        return rng.binomial(1, p)
 
 
 class Poisson(_count_model):
@@ -604,7 +614,7 @@ class Poisson(_count_model):
                 F_mu, F_var, XZ, b, neuron, samples=samples, mode=mode
             )
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Takes into account the quantization bias if we sample IPP with dilation factor.
 
@@ -612,8 +622,11 @@ class Poisson(_count_model):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
-        return np.random.poisson(rate[:, neuron, :] * self.tbin.item())
+        return rng.poisson(rate[:, neuron, :] * self.tbin.item())
 
 
 class ZI_Poisson(_count_model):
@@ -675,7 +688,7 @@ class ZI_Poisson(_count_model):
         nll = zero_spikes * nll_0 + (~zero_spikes) * nll_
         return nll.sum(1)
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Sample from ZIP process.
 
@@ -683,6 +696,9 @@ class ZI_Poisson(_count_model):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
@@ -701,7 +717,7 @@ class ZI_Poisson(_count_model):
                     .numpy()
                 )
 
-        return gen_ZIP(rate_ * self.tbin.item(), alpha_)
+        return gen_ZIP(rng, rate_ * self.tbin.item(), alpha_)
 
 
 
@@ -818,7 +834,7 @@ class Negative_binomial(_count_model):
         # nll = nll_r*(~asymptotic_mask) + nll_r_inv*asymptotic_mask
         return nll.sum(1)
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Sample from the Gamma-Poisson mixture.
 
@@ -827,6 +843,9 @@ class Negative_binomial(_count_model):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
@@ -847,7 +866,7 @@ class Negative_binomial(_count_model):
                 disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
             r_ = 1.0 / (disp.cpu().numpy() + 1e-12)
 
-        return gen_NB(rate_ * self.tbin.item(), r_)
+        return gen_NB(rng, rate_ * self.tbin.item(), r_)
 
 
 
@@ -962,7 +981,7 @@ class COM_Poisson(_count_model):
         nll = -n_l_rates + l_Z - tfact + nu_ * lfact
         return nll.sum(1)
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Sample from the CMP distribution.
 
@@ -970,23 +989,27 @@ class COM_Poisson(_count_model):
         :returns: spike train of shape (trials, neuron, timesteps)
         :rtype: np.array
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
-        mu_ = rate[:, neuron, :] * self.tbin.item()
+        lamb_ = rate[:, neuron, :] * self.tbin.item()
 
         if self.dispersion_mapping is None:
             nu_ = (
                 torch.exp(self.log_nu)[None, :, None]
-                .expand(rate.shape[0], self.neurons, mu_.shape[-1])
+                .expand(rate.shape[0], self.neurons, lamb_.shape[-1])
                 .data.cpu()
                 .numpy()[:, neuron, :]
             )
+            
         else:
             samples = rate.shape[0]
             with torch.no_grad():
                 disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
             nu_ = torch.exp(disp).cpu().numpy()
 
-        return gen_CMP(mu_, nu_)
+        return gen_CMP(rng, lamb_, nu_)
 
 
 class hCOM_Poisson(COM_Poisson):

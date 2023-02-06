@@ -118,10 +118,13 @@ class Gaussian(base._likelihood):
 
         return self.nll(rates, spikes, torch.exp(log_var)), ws
 
-    def sample(self, rate, neuron=None, XZ=None):
+    def sample(self, rate, neuron=None, XZ=None, rng=None):
         """
         Sample activity trains [trial, neuron, timestep]
         """
+        if rng is None:
+            rng = np.random.default_rng()
+            
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
@@ -138,8 +141,8 @@ class Gaussian(base._likelihood):
                 None, ...
             ].expand(rate.shape[0], *rate_.shape[1:])
 
-        act = rate_ + np.exp(log_var / 2.0) * np.random.randn(
-            rate.shape[0], len(neuron), rate.shape[-1]
+        act = rate_ + np.exp(log_var / 2.0) * rng.normal(
+            size=(rate.shape[0], len(neuron), rate.shape[-1])
         )
         return act
 
@@ -157,82 +160,3 @@ class hGaussian(Gaussian):
         super().__init__(neurons, inv_link, None, tensor_type)
         self.dispersion_mapping = dispersion_mapping
         self.dispersion_mapping_f = lambda x: x
-
-
-class Multivariate_Gaussian(base._likelihood):
-    r"""
-    Account for noise correlations as in [1]. The covariance over neuron dimension is introduced.
-
-    [1] `Learning a latent manifold of odor representations from neural responses in piriform cortex`,
-        Anqi Wu, Stan L. Pashkovski, Sandeep Robert Datta, Jonathan W. Pillow, 2018
-    """
-
-    def __init__(self, neurons, inv_link, log_var, tensor_type=torch.float):
-        """
-        log_var can be shared or independent for neurons depending on the shape
-        """
-        super().__init__(neurons, inv_link, tensor_type)
-        self.register_parameter("log_var", Parameter(log_var.type(self.tensor_type)))
-
-    def set_params(self, log_var=None, jitter=1e-6):
-        if log_var is not None:
-            self.log_var.data = torch.tensor(log_var, device=self.tbin.device)
-
-    def objective(self, F_mu, F_var, XZ, b, neuron, samples, mode="MC"):
-        """
-        Gaussian likelihood for activity train
-        samples introduces a sample dimension from the left
-        F_mu has shape (samples, neuron, timesteps)
-        if F_var = 0, we don't expand by samples in the sample dimension
-        """
-        spikes = self.spikes[b][None, neuron, self.filter_len - 1 :].to(
-            self.tbin.device
-        )  # activity
-        batch_size = F_mu.shape[-1]
-
-        if self.inv_link == "identity" and F_var is not None:  # exact
-            noise_var = (self.L @ self.L.t())[None, neuron, None] + F_var[:, neuron, :]
-
-            nll = (
-                0.5
-                * (
-                    torch.log(noise_var)
-                    + ((spikes - F_mu) ** 2) / noise_var
-                    + F_var / noise_var
-                ).sum(-1)
-                + 0.5 * torch.log(torch.tensor(2 * np.pi)) * batch_size
-            )
-        else:
-            if F_var != 0:  # MC samples
-                h = dist.Rn_Normal(F_mu, F_var)((samples,)).view(-1, *F_mu.shape[1:])[
-                    :, neuron, :
-                ]
-                F_var = F_var.repeat(samples, 1, 1)
-            else:
-                h = F_mu[:, neuron, :]
-
-            rates = self.f(h)
-            noise_var = (
-                torch.exp(self.log_var)[None, neuron, None] + F_var[:, neuron, :]
-            )
-
-            nll = (
-                0.5
-                * (torch.log(noise_var) + ((spikes - rates) ** 2) / noise_var).sum(-1)
-                + 0.5 * torch.log(torch.tensor(2 * np.pi)) * batch_size
-            )
-
-        ws = torch.tensor(1.0 / nll.shape[0])
-        return nll.sum(1), ws
-
-    def sample(self, rate, neuron=None, XZ=None):
-        """
-        Sample activity trains [trial, neuron, timestep]
-        """
-        neuron = self._validate_neuron(neuron)
-        act = rate + torch.exp(
-            self.log_var
-        ).data.sqrt().cpu().numpy() * np.random.randn(
-            (rate.shape[0], len(neuron), rate.shape[-1])
-        )
-        return act
