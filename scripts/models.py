@@ -18,6 +18,308 @@ from neuroprob import kernels, utils
 
 
 
+
+
+### data ###
+def get_dataset(data_type, bin_size, path):
+
+    if data_type == "hCMP" or data_type == "IP":  # synthetic
+        assert bin_size == 1
+        metainfo = {}
+
+        if data_type == "hCMP":
+            syn_data = np.load(path + "hCMP_HDC.npz")
+            rcov = {
+                "hd": syn_data["rhd_t"],
+            }
+
+        elif data_type == "IP":
+            syn_data = np.load(path + "IP_HDC.npz")
+            rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
+
+        rc_t = syn_data["spktrain"]
+        tbin = syn_data["tbin"].item()
+
+        resamples = rc_t.shape[1]
+        units_used = rc_t.shape[0]
+
+    elif data_type == "th1" or data_type == "th1leftover":
+        data = np.load(path + "Mouse28_140313_wake.npz")
+
+        if data_type == "th1":
+            sel_unit = data["hdc_unit"]
+        else:
+            sel_unit = ~data["hdc_unit"]
+
+        neuron_regions = data["neuron_regions"][sel_unit]  # 1 is ANT, 0 is PoS
+        spktrain = data["spktrain"][sel_unit, :]
+
+        x_t = data["x_t"]
+        y_t = data["y_t"]
+        hd_t = data["hd_t"]
+
+        sample_bin = 0.001
+        track_samples = spktrain.shape[1]
+
+        tbin, resamples, rc_t, (rhd_t, rx_t, ry_t) = utils.neural.bin_data(
+            bin_size,
+            sample_bin,
+            spktrain,
+            track_samples,
+            (np.unwrap(hd_t), x_t, y_t),
+            average_behav=True,
+            binned=True,
+        )
+
+        # recompute velocities
+        rw_t = (rhd_t[1:] - rhd_t[:-1]) / tbin
+        rw_t = np.concatenate((rw_t, rw_t[-1:]))
+
+        rvx_t = (rx_t[1:] - rx_t[:-1]) / tbin
+        rvy_t = (ry_t[1:] - ry_t[:-1]) / tbin
+        rs_t = np.sqrt(rvx_t**2 + rvy_t**2)
+        rs_t = np.concatenate((rs_t, rs_t[-1:]))
+        rtime_t = np.arange(resamples) * tbin
+
+        rcov = {
+            "hd": rhd_t % (2 * np.pi),
+            "omega": rw_t,
+            "speed": rs_t,
+            "x": rx_t,
+            "y": ry_t,
+            "time": rtime_t,
+        }
+
+        metainfo = {
+            "neuron_regions": neuron_regions,
+        }
+
+    name = data_type
+
+    # export
+    units_used = rc_t.shape[0]
+    max_count = int(rc_t.max())
+
+    dataset_dict = {
+        "name": name,
+        "covariates": rcov,
+        "spiketrains": rc_t,
+        "neurons": units_used,
+        "metainfo": metainfo,
+        "tbin": tbin,
+        "timesamples": resamples,
+        "max_count": max_count,
+        "bin_size": bin_size,
+        "trial_sizes": None,
+    }
+    return dataset_dict
+
+
+### model ###
+class Siren(nn.Module):
+    """
+    Activation function class for SIREN
+
+    `Implicit Neural Representations with Periodic Activation Functions`,
+    Vincent Sitzmann, Julien N. P. Martel, Alexander W. Bergman, David B. Lindell, Gordon Wetzstein
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input):
+        return torch.sin(input)
+
+
+
+class MLP(nn.Module):
+    """
+    Multi-layer perceptron class
+    """
+
+    def __init__(
+        self, layers, in_dims, out_dims, nonlin=nn.ReLU(), out=None, bias=True
+    ):
+        super().__init__()
+        net = nn.ModuleList([])
+        if len(layers) == 0:
+            net.append(nn.Linear(in_dims, out_dims, bias=bias))
+        else:
+            net.append(nn.Linear(in_dims, layers[0], bias=bias))
+            net.append(nonlin)
+            for k in range(len(layers) - 1):
+                net.append(nn.Linear(layers[k], layers[k + 1], bias=bias))
+                net.append(nonlin)
+                # net.append(nn.BatchNorm1d())
+            net.append(nn.Linear(layers[-1:][0], out_dims, bias=bias))
+        if out is not None:
+            net.append(out)
+        self.net = nn.Sequential(*net)
+
+    def forward(self, input):
+        return self.net(input)
+
+    
+    
+class FFNN_model(nn.Module):
+    """
+    Multi-layer perceptron class
+    """
+
+    def __init__(self, layers, angle_dims, euclid_dims, out_dims):
+        """
+        Assumes angular dimensions to be ordered first in the input of shape (2*dimensions,)
+        """
+        super().__init__()
+        self.angle_dims = angle_dims
+        self.in_dims = 2 * angle_dims + euclid_dims
+        net = utils.pytorch.MLP(
+            layers, self.in_dims, out_dims, nonlin=utils.pytorch.Siren(), out=None
+        )
+        self.add_module("net", net)
+
+    def forward(self, input):
+        """
+        Input of shape (samplesxtime, dims)
+        """
+        embed = torch.cat(
+            (
+                torch.cos(input[:, : self.angle_dims]),
+                torch.sin(input[:, : self.angle_dims]),
+                input[:, self.angle_dims :],
+            ),
+            dim=-1,
+        )
+        return self.net(embed)
+
+
+def enc_used(model_dict, covariates, learn_mean):
+    """
+    Construct the neural encoding mapping module
+    """
+    ll_mode, map_mode, x_mode, z_mode = (
+        model_dict["ll_mode"],
+        model_dict["map_mode"],
+        model_dict["x_mode"],
+        model_dict["z_mode"],
+    )
+    jitter, tensor_type = model_dict["jitter"], model_dict["tensor_type"]
+    neurons, in_dims = (
+        model_dict["neurons"],
+        model_dict["map_xdims"] + model_dict["map_zdims"],
+    )
+
+    out_dims = model_dict["map_outdims"]
+    mean = torch.zeros((out_dims)) if learn_mean else 0  # not learnable vs learnable
+
+    map_mode_comps = map_mode.split("-")
+    x_mode_comps = x_mode.split("-")
+
+    def get_inducing_locs_and_ls(comp):
+        if comp == "hd":
+            locs = np.linspace(0, 2 * np.pi, num_induc + 1)[:-1]
+            ls = 5.0 * np.ones(out_dims)
+        elif comp == "omega":
+            scale = covariates["omega"].std()
+            locs = scale * np.random.randn(num_induc)
+            ls = scale * np.ones(out_dims)
+        elif comp == "speed":
+            scale = covariates["speed"].std()
+            locs = np.random.uniform(0, scale, size=(num_induc,))
+            ls = 10.0 * np.ones(out_dims)
+        elif comp == "x":
+            left_x = covariates["x"].min()
+            right_x = covariates["x"].max()
+            locs = np.random.uniform(left_x, right_x, size=(num_induc,))
+            ls = (right_x - left_x) / 10.0 * np.ones(out_dims)
+        elif comp == "y":
+            bottom_y = covariates["y"].min()
+            top_y = covariates["y"].max()
+            locs = np.random.uniform(bottom_y, top_y, size=(num_induc,))
+            ls = (top_y - bottom_y) / 10.0 * np.ones(out_dims)
+        elif comp == "time":
+            scale = covariates["time"].max()
+            locs = np.linspace(0, scale, num_induc)
+            ls = scale / 2.0 * np.ones(out_dims)
+        else:
+            raise ValueError("Invalid covariate type")
+
+        return locs, ls, (comp == "hd")
+
+    if map_mode_comps[0] == "svgp":
+        num_induc = int(map_mode_comps[1])
+
+        var = 1.0  # initial kernel variance
+        v = var * torch.ones(out_dims)
+
+        ind_list = []
+        kernel_tuples = [("variance", v)]
+        ang_ls, euclid_ls = [], []
+
+        # x
+        for xc in x_mode_comps:
+            if xc == "":
+                continue
+
+            locs, ls, angular = get_inducing_locs_and_ls(xc)
+
+            ind_list += [locs]
+            if angular:
+                ang_ls += [ls]
+            else:
+                euclid_ls += [ls]
+
+        if len(ang_ls) > 0:
+            ang_ls = np.array(ang_ls)
+            kernel_tuples += [("SE", "ring", torch.tensor(ang_ls))]
+        if len(euclid_ls) > 0:
+            euclid_ls = np.array(euclid_ls)
+            kernel_tuples += [("SE", "euclid", torch.tensor(euclid_ls))]
+
+        # z
+        latent_k, latent_u = latent_kernel(z_mode, num_induc, out_dims)
+        kernel_tuples += latent_k
+        ind_list += latent_u
+
+        # objects
+        kernelobj = create_kernel(kernel_tuples, "exp", tensor_type)
+
+        Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
+        inpd = Xu.shape[-1]
+        inducing_points = nprb.mappings.inducing_points(
+            out_dims, Xu, tensor_type=tensor_type
+        )
+
+        mapping = nprb.mappings.SVGP(
+            in_dims,
+            out_dims,
+            kernelobj,
+            inducing_points=inducing_points,
+            jitter=jitter,
+            whiten=True,
+            mean=mean,
+            learn_mean=learn_mean,
+            tensor_type=tensor_type,
+        )
+
+    elif map_mode_comps[0] == "ffnn":  # feedforward neural network mapping
+        rate_model = FFNN_params(in_dims, enc_layers, angle_dims, inner_dims, inv_link)
+
+        mu_ANN = FFNN_model(
+            enc_layers, angle_dims, tot_dims - angle_dims, neurons
+        )
+        mapping = mdl.parametrics.FFNN(
+            tot_dims, neurons, inv_link, mu_ANN, sigma_ANN=None, tens_type=torch.float
+        )
+
+    else:
+        raise ValueError
+
+    return mapping
+
+
+
+
 ### GP ###
 def create_kernel(kernel_tuples, kern_f, tensor_type):
     """
@@ -395,8 +697,6 @@ def standard_parser(usage, description):
     parser.add_argument("--cv", nargs="+", type=int)
     parser.add_argument("--cv_folds", default=5, type=int)
     parser.add_argument("--bin_size", type=int)
-    parser.add_argument("--single_spikes", dest="single_spikes", action="store_true")
-    parser.set_defaults(single_spikes=False)
 
     parser.add_argument("--seeds", default=[123], nargs="+", type=int)
     parser.add_argument("--gpu", default=0, type=int)
@@ -544,11 +844,14 @@ def preprocess_data(
     return returns
 
 
-def setup_model(data_tuple, model_dict, enc_used):
+def setup_model(data_dict, model_dict, enc_used):
     """ "
     Assemble the encoding model
     """
-    spktrain, cov, batch_info = data_tuple
+    spktrain = data_dict["spiketrain"]
+    cov = data_dict["covariates"]
+    batch_info = data_dict["batch_info"]
+    
     neurons, timesamples = spktrain.shape[0], spktrain.shape[-1]
 
     ll_mode, map_mode, x_mode, z_mode, tensor_type = (
@@ -624,7 +927,7 @@ def extract_model_dict(config, dataset_dict):
     return model_dict
 
 
-def train_model(dev, parser_args, dataset_dict, enc_used):
+def train_model(dev, parser_args, dataset_dict):
     """
     General training loop
 
@@ -654,11 +957,11 @@ def train_model(dev, parser_args, dataset_dict, enc_used):
         dataset_dict, folds, delays, cv_runs, batchsize, has_latent
     )
     for cvdata in preprocessed:
-        fitdata = (
-            cvdata["spiketrain_fit"],
-            cvdata["covariates_fit"],
-            cvdata["batching_info_fit"],
-        )
+        fit_data = {
+            "spiketrain": cvdata["spiketrain_fit"],
+            "covariates": cvdata["covariates_fit"],
+            "batch_info": cvdata["batching_info_fit"],
+        }
         model_name = gen_name(model_dict, cvdata["delay"], cvdata["fold"])
         print(model_name)
 
@@ -668,7 +971,7 @@ def train_model(dev, parser_args, dataset_dict, enc_used):
             print("seed: {}".format(seed))
 
             try:  # attempt to fit model
-                full_model = setup_model(fitdata, model_dict, enc_used)
+                full_model = setup_model(fit_data, model_dict, enc_used)
                 full_model.to(dev)
 
                 sch = lambda o: optim.lr_scheduler.MultiplicativeLR(
@@ -731,20 +1034,20 @@ def load_model(
     config_name,
     checkpoint_dir,
     dataset_dict,
-    enc_used,
     batch_info,
     device,
 ):
     """
     Load the model with cross-validated data structure
     """
-    with open(checkpoint_dir + config_name + ".p", "rb") as f:
-        training_results = pickle.load(f)
-
-    delay, cv_run = training_results["delay"], training_results["cv_run"]
-    config = training_results["config"]
+    checkpoint = torch.load(
+        checkpoint_dir + config_name + ".pt", map_location=device
+    )
+        
+    delay, cv_run = checkpoint["delay"], checkpoint["cv_run"]
+    config = checkpoint["config"]
     model_dict = extract_model_dict(config, dataset_dict)
-    model_dict["seed"] = training_results["seed"]
+    model_dict["seed"] = checkpoint["seed"]
 
     has_latent = False if model_dict["z_mode"] == "" else True
     cvdata = preprocess_data(
@@ -756,28 +1059,11 @@ def load_model(
         has_latent,
     )[0]
 
-    fit_data = (
-        cvdata["spiketrain_fit"],
-        cvdata["covariates_fit"],
-        cvdata["batching_info_fit"],
-    )
-    val_data = (
-        cvdata["spiketrain_val"],
-        cvdata["covariates_val"],
-        cvdata["batching_info_val"],
-    )
-    fit_set = (
-        inputs_used(model_dict, fit_data[1], batch_info)[0],
-        torch.from_numpy(fit_data[0]),
-        fit_data[2],
-    )
-    validation_set = (
-        inputs_used(model_dict, val_data[1], batch_info)[0]
-        if val_data[1] is not None
-        else None,
-        torch.from_numpy(val_data[0]) if val_data[0] is not None else None,
-        val_data[2],
-    )
+    fit_data = {
+        "spiketrain": cvdata["spiketrain_fit"],
+        "covariates": cvdata["covariates_fit"],
+        "batch_info": cvdata["batching_info_fit"],
+    }
 
     ### model ###
     full_model = setup_model(fit_data, model_dict, enc_used)
@@ -785,9 +1071,155 @@ def load_model(
 
     ### load ###
     model_name = gen_name(model_dict, delay, cv_run)
-    checkpoint = torch.load(
-        checkpoint_dir + model_name + ".pt", map_location=device
-    )
     full_model.load_state_dict(checkpoint["full_model"])
 
-    return full_model, training_results, fit_set, validation_set
+    # return
+    fit_dict = {
+        "covariates": inputs_used(model_dict, cvdata["covariates_fit"], batch_info)[0],
+        "spiketrain": torch.from_numpy(cvdata["spiketrain_fit"]),
+        "batch_info": cvdata["batching_info_fit"],
+    }
+    val_dict = {
+        "covariates": inputs_used(model_dict, cvdata["covariates_val"], batch_info)[0]
+        if cvdata["covariates_val"] is not None
+        else None,
+        "spiketrain": torch.from_numpy(cvdata["spiketrain_val"]) 
+        if cvdata["spiketrain_val"] is not None
+        else None,
+        "batch_info": cvdata["batching_info_val"],
+    }
+    training_loss = checkpoint["training_loss"]
+    
+    return full_model, training_loss, fit_dict, val_dict
+
+
+
+### cross validation ###
+def RG_pred_ll(
+    model,
+    val_dict,
+    neuron_group=None,
+    ll_mode="GH",
+    ll_samples=100,
+    cov_samples=1,
+    beta=1.0,
+):
+    """
+    Compute the variational log likelihood (beta = 0.) or ELBO (beta = 1.)
+    """
+    vtrain = val_dict["spiketrain"]
+    vcov = val_dict["covariates"]
+    vbatch_info = val_dict["batch_info"]
+    
+    time_steps = vtrain.shape[-1]
+    #print("Data segment timesteps: {}".format(time_steps))
+
+    model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
+    model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
+    model.validate_model(likelihood_set=True)
+
+    # batching
+    pll = []
+    for b in range(model.input_group.batches):
+        pll.append(
+            -model.objective(
+                b,
+                cov_samples=cov_samples,
+                ll_mode=ll_mode,
+                neuron=neuron_group,
+                beta=beta,
+                ll_samples=ll_samples,
+            ).item()
+        )
+
+    return np.array(pll).mean()  # mean over each subsampled estimate
+
+
+def LVM_pred_ll(
+    model,
+    val_dict,
+    fit_neurons,
+    val_neurons,
+    eval_cov_MC=1,
+    eval_ll_MC=100,
+    eval_ll_mode="GH",
+    annealing=lambda x: 1.0,  # min(1.0, 0.002*x)
+    cov_MC=16,
+    ll_MC=1,
+    ll_mode="MC",
+    beta=1.0,
+    max_iters=3000,
+):
+    """
+    Compute the variational log likelihood (beta = 0.) or ELBO (beta = 1.)
+    """
+    vtrain = val_dict["spiketrain"]
+    vcov = val_dict["covariates"]
+    vbatch_info = val_dict["batch_info"]
+    
+    time_steps = vtrain.shape[-1]
+    #print("Data segment timesteps: {}".format(time_steps))
+
+    model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
+    model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
+    model.validate_model(likelihood_set=True)
+
+    # fit
+    sch = lambda o: optim.lr_scheduler.MultiplicativeLR(o, lambda e: 0.9)
+    opt_tuple = (optim.Adam, 100, sch)
+    opt_lr_dict = {"default": 0}
+    for z_dim in model.input_group.latent_dims:
+        opt_lr_dict["input_group.input_{}.variational.mu".format(z_dim)] = 1e-2
+        opt_lr_dict["input_group.input_{}.variational.finv_std".format(z_dim)] = 1e-3
+
+    model.set_optimizers(
+        opt_tuple, opt_lr_dict
+    )  # , nat_grad=('rate_model.0.u_loc', 'rate_model.0.u_scale_tril'))
+
+    losses = model.fit(
+        max_iters,
+        neuron=fit_neurons,
+        loss_margin=-1e0,
+        margin_epochs=100,
+        ll_mode=ll_mode,
+        kl_anneal_func=annealing,
+        cov_samples=cov_MC,
+        ll_samples=ll_MC,
+    )
+
+    pll = []
+    for b in range(model.input_group.batches):
+        pll.append(
+            -model.objective(
+                b,
+                neuron=val_neurons,
+                cov_samples=eval_cov_MC,
+                ll_mode=eval_ll_mode,
+                beta=beta,
+                ll_samples=eval_ll_MC,
+            ).item()
+        )
+
+    return np.array(pll).mean(), losses  # mean over each subsampled estimate
+
+
+
+
+### main ###
+def main():
+    parser = standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
+    parser.add_argument("--data_path", action="store", type=str)
+    parser.add_argument("--data_type", action="store", type=str)
+
+    args = parser.parse_args()
+
+    dev = nprb.inference.get_device(gpu=args.gpu)
+    dataset_dict = get_dataset(
+        args.data_type, args.bin_size, args.data_path
+    )
+    
+    train_model(dev, args, dataset_dict)
+
+
+if __name__ == "__main__":
+    main()

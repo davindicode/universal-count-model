@@ -5,7 +5,7 @@ from numbers import Number
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
@@ -18,7 +18,7 @@ from .utils import signal
 
 # Link functions
 _link_functions = {
-    "exp": lambda x: torch.log(x),
+    "exp": torch.log,
     "softplus": lambda x: torch.where(
         x > 30, x, torch.log(torch.exp(x) - 1.0)
     ),  # | log(1+exp(30)) - 30 | < 1e-10, numerically stabilized
@@ -28,11 +28,11 @@ _link_functions = {
 }
 
 _inv_link_functions = {
-    "exp": lambda x: torch.exp(x),
-    "softplus": lambda x: F.softplus(x),
+    "exp": torch.exp,
+    "softplus": F.softplus,
     "relu": lambda x: torch.clamp(x, min=0),
     "identity": lambda x: x,
-    "sigmoid": lambda x: torch.sigmoid(x),
+    "sigmoid": torch.sigmoid,
 }
 
 

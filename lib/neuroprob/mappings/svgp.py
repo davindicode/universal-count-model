@@ -167,6 +167,7 @@ class inducing_points(nn.Module):
             self.u_scale_tril.data[:, range(Nu), range(Nu)] = torch.clamp(
                 self.u_scale_tril.data[:, range(Nu), range(Nu)], min=1e-12
             )
+            
 
 
 class SVGP(base._input_mapping):
@@ -297,7 +298,7 @@ class SVGP(base._input_mapping):
                 p = dist.MultivariateNormal(
                     zero_loc, scale_tril=self.Luu
                 )  # .to_event(zero_loc.dim() - 1)
-
+                
             q = dist.MultivariateNormal(
                 self.induc_pts.u_loc, scale_tril=self.induc_pts.u_scale_tril
             )  # .to_event(self.u_loc.dim()-1)

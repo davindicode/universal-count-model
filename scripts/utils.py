@@ -146,113 +146,6 @@ def marginalized_P(
     return P_tot
 
 
-### cross validation ###
-def RG_pred_ll(
-    model,
-    validation_set,
-    neuron_group=None,
-    ll_mode="GH",
-    ll_samples=100,
-    cov_samples=1,
-    beta=1.0,
-    IW=False,
-):
-    """
-    Compute the predictive log likelihood (ELBO).
-    """
-    vcov, vtrain, vbatch_info = validation_set
-    time_steps = vtrain.shape[-1]
-    print("Data segment timesteps: {}".format(time_steps))
-
-    model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
-    model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
-    model.validate_model(likelihood_set=True)
-
-    # batching
-    pll = []
-    for b in range(model.input_group.batches):
-        pll.append(
-            -model.objective(
-                b,
-                cov_samples=cov_samples,
-                ll_mode=ll_mode,
-                neuron=neuron_group,
-                beta=beta,
-                ll_samples=ll_samples,
-                importance_weighted=IW,
-            ).item()
-        )
-
-    return np.array(pll).mean()
-
-
-def LVM_pred_ll(
-    model,
-    validation_set,
-    f_neuron,
-    v_neuron,
-    eval_cov_MC=1,
-    eval_ll_MC=100,
-    eval_ll_mode="GH",
-    annealing=lambda x: 1.0,  # min(1.0, 0.002*x)
-    cov_MC=16,
-    ll_MC=1,
-    ll_mode="MC",
-    beta=1.0,
-    IW=False,
-    max_iters=3000,
-):
-    """
-    Compute the predictive log likelihood (ELBO).
-    """
-    vcov, vtrain, vbatch_info = validation_set
-    time_steps = vtrain.shape[-1]
-    print("Data segment timesteps: {}".format(time_steps))
-
-    model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
-    model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
-    model.validate_model(likelihood_set=True)
-
-    # fit
-    sch = lambda o: optim.lr_scheduler.MultiplicativeLR(o, lambda e: 0.9)
-    opt_tuple = (optim.Adam, 100, sch)
-    opt_lr_dict = {"default": 0}
-    for z_dim in model.input_group.latent_dims:
-        opt_lr_dict["input_group.input_{}.variational.mu".format(z_dim)] = 1e-2
-        opt_lr_dict["input_group.input_{}.variational.finv_std".format(z_dim)] = 1e-3
-
-    model.set_optimizers(
-        opt_tuple, opt_lr_dict
-    )  # , nat_grad=('rate_model.0.u_loc', 'rate_model.0.u_scale_tril'))
-
-    losses = model.fit(
-        max_iters,
-        neuron=f_neuron,
-        loss_margin=-1e0,
-        margin_epochs=100,
-        ll_mode=ll_mode,
-        kl_anneal_func=annealing,
-        cov_samples=cov_MC,
-        ll_samples=ll_MC,
-    )
-
-    pll = []
-    for b in range(model.input_group.batches):
-        pll.append(
-            -model.objective(
-                b,
-                neuron=v_neuron,
-                cov_samples=eval_cov_MC,
-                ll_mode=eval_ll_mode,
-                beta=beta,
-                ll_samples=eval_ll_MC,
-                importance_weighted=IW,
-            ).item()
-        )
-
-    return np.array(pll).mean(), losses
-
-
 
 # metrics
 def metric(x, y, topology="euclid"):
@@ -275,6 +168,155 @@ def metric(x, y, topology="euclid"):
         raise NotImplementedError
     # xy[xy < 0] = -xy[xy < 0] # abs
     return xy
+
+
+
+### stats ###
+def ind_to_pair(ind, N):
+    a = ind
+    k = 1
+    while a >= 0:
+        a -= N - k
+        k += 1
+
+    n = k - 1
+    m = N - n + a
+    return n - 1, m
+
+
+def get_q_Z(P, spike_binned, deq_noise=None):
+    if deq_noise is None:
+        deq_noise = np.random.uniform(size=spike_binned.shape)
+    else:
+        deq_noise = 0
+
+    cumP = np.cumsum(P, axis=-1)  # T, K
+    tt = np.arange(spike_binned.shape[0])
+    quantiles = (
+        cumP[tt, spike_binned.astype(int)] - P[tt, spike_binned.astype(int)] * deq_noise
+    )
+    Z = utils.stats.q_to_Z(quantiles)
+    return quantiles, Z
+
+
+def compute_count_stats(
+    modelfit,
+    spktrain,
+    behav_list,
+    neuron,
+    traj_len=None,
+    traj_spikes=None,
+    start=0,
+    T=100000,
+    bs=5000,
+    n_samp=1000,
+):
+    """
+    Compute the dispersion statistics for the count model
+
+    :param string mode: *single* mode refers to computing separate single neuron quantities, *population* mode
+                        refers to computing over a population indicated by neurons, *peer* mode involves the
+                        peer predictability i.e. conditioning on all other neurons given a subset
+    """
+    mapping = modelfit.mapping
+    likelihood = modelfit.likelihood
+    tbin = modelfit.likelihood.tbin
+
+    N = int(np.ceil(T / bs))
+    rate_model = []
+    shape_model = []
+    spktrain = spktrain[:, start : start + T]
+    behav_list = [b[start : start + T] for b in behav_list]
+
+    for k in range(N):
+        covariates_ = [torchb[k * bs : (k + 1) * bs] for b in behav_list]
+        ospktrain = spktrain[None, ...]
+
+        rate = posterior_rate(
+            mapping, likelihood, covariates, MC, F_dims, trials=1, percentiles=[0.5]
+        )  # glm.mapping.eval_rate(covariates_, neuron, n_samp=1000)
+        rate_model += [rate[0, ...]]
+
+        if likelihood.dispersion_mapping is not None:
+            cov = mapping.to_XZ(covariates_, trials=1)
+            disp = likelihood.sample_dispersion(cov, n_samp, neuron)
+            shape_model += [disp[0, ...]]
+
+    rate_model = np.concatenate(rate_model, axis=1)
+    if count_model and glm.likelihood.dispersion_mapping is not None:
+        shape_model = np.concatenate(shape_model, axis=1)
+
+    if type(likelihood) == nprb.likelihoods.Poisson:
+        shape_model = None
+        f_p = lambda c, avg, shape, t: utils.stats.poiss_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.Negative_binomial:
+        shape_model = (
+            glm.likelihood.r_inv.data.cpu().numpy()[:, None].repeat(T, axis=-1)
+        )
+        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.COM_Poisson:
+        shape_model = glm.likelihood.nu.data.cpu().numpy()[:, None].repeat(T, axis=-1)
+        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.ZI_Poisson:
+        shape_model = (
+            glm.likelihood.alpha.data.cpu().numpy()[:, None].repeat(T, axis=-1)
+        )
+        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.hNegative_binomial:
+        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.hCOM_Poisson:
+        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
+
+    elif type(likelihood) == nprb.likelihoods.hZI_Poisson:
+        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
+
+    else:
+        raise ValueError
+
+    m_f = lambda x: x
+
+    if shape_model is not None:
+        assert traj_len == 1
+    if traj_len is not None:
+        traj_lens = (T // traj_len) * [traj_len]
+
+    q_ = []
+    for k, ne in enumerate(neuron):
+        if traj_spikes is not None:
+            avg_spikecnt = np.cumsum(rate_model[k] * tbin)
+            nc = 1
+            traj_len = 0
+            for tt in range(T):
+                if avg_spikecnt >= traj_spikes * nc:
+                    nc += 1
+                    traj_lens.append(traj_len)
+                    traj_len = 0
+                    continue
+                traj_len += 1
+
+        if shape_model is not None:
+            sh = shape_model[k]
+            spktr = spktrain[ne]
+            rm = rate_model[k]
+        else:
+            sh = None
+            spktr = []
+            rm = []
+            start = np.cumsum(traj_lens)
+            for tt, traj_len in enumerate(traj_lens):
+                spktr.append(spktrain[ne][start[tt] : start[tt] + traj_len].sum())
+                rm.append(rate_model[k][start[tt] : start[tt] + traj_len].sum())
+            spktr = np.array(spktr)
+            rm = np.array(rm)
+
+        q_.append(utils.stats.count_KS_method(f_p, m_f, tbin, spktr, rm, shape=sh))
+
+    return q_
 
 
 

@@ -77,14 +77,19 @@ class probabilistic_mapping(base._VI_object):
     Takes in an _input_mapping object
     """
 
-    def __init__(self, input_group, mapping):
+    def __init__(self, input_group, mapping, joint_samples=False):
         """ """
         super().__init__(mapping.out_dims, mapping.tensor_type)
         if mapping.tensor_type != input_group.tensor_type:
             raise ValueError("Mapping and input group tensor types do not match")
         self.add_module("mapping", mapping)
         self.add_module("input_group", input_group)
+        self.joint_samples = joint_samples
 
+    def constrain(self):
+        self.mapping.constrain()
+        self.input_group.constrain()
+        
     def validate(self, tsteps, trials, batch_info):
         if tsteps != self.input_group.tsteps:
             raise ValueError(
@@ -98,12 +103,20 @@ class probabilistic_mapping(base._VI_object):
             raise ValueError("Nested input batching structures do not match")
 
     def sample(self, b, batch_info, samples):
-        """ """
+        """
+        Sample from the posterior of the mapping
+        """
         t_, KL_prior = self.input_group.sample_XZ(
             b, 1,
         )  # samples, timesteps, dims
         KL_prior = KL_prior + self.mapping.KL_prior()
-        f = self.mapping.sample_F(t_)  # batch, outdims, time
+        
+        if self.joint_samples:
+            f = self.mapping.sample_F(t_)  # batch, outdims, time
+        else:
+            f_mu, f_var = self.mapping.compute_F(t_)
+            f = f_mu + torch.sqrt(f_var) * torch.randn_like(f_mu)
+        
         f = f.permute(0, 2, 1)[:, None, ...]  # batch, neurons, time, d
 
         return f, KL_prior
@@ -228,7 +241,12 @@ class input_group(_data_object):
 
     def constrain(self):
         """ """
-        return
+        for k, in_ in enumerate(self.XZ):
+
+            if isinstance(in_, torch.Tensor):  # regressor variable
+                continue
+                
+            in_.constrain()
 
     def _XZ(self, XZ, samples):
         """

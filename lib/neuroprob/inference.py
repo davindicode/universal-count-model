@@ -372,8 +372,6 @@ class VI_optimized(nn.Module):
                     )
 
                     if loss.requires_grad:
-                        # with profiler.profile(record_shapes=True, use_cuda=True) as profi:
-                        #    with profiler.record_function("backwards"):
                         loss.backward(retain_graph=retain_graph)
 
                         # special gradient steps

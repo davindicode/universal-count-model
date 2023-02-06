@@ -53,6 +53,9 @@ class _VI_object(nn.Module):
         self.dims = dims
         self.tensor_type = tensor_type
 
+    def constrain(self):
+        return
+        
     def validate(self, tsteps, trials, batches):
         """ """
         raise NotImplementedError

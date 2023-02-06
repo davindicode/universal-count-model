@@ -1,0 +1,6 @@
+************* Module neuroprob
+lib/neuroprob/__init__.py:1:0: C0114: Missing module docstring (missing-module-docstring)
+************* Module neuroprob.base
+lib/neuroprob/base.py:51:0: C0301: Line too long (112/100) (line-too-long)
+lib/neuroprob/base.py:79:0: C0305: Trailing newlines (trailing-newlines)
+lib/neuroprob/base.py:1:0: C0114: Missing module docstring (missing-module-docstring)
