@@ -24,6 +24,9 @@ python3 models.py --data_type hCMP1 --checkpoint_dir ./checkpoint/ --data_path .
 
 
 
+python3 models.py --data_type hCMP1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 2 5 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 1 --likelihood CMP-100-exp --mapping svgp-8 --x_mode hd --lr 1e-2 --jitter 1e-5 --gpu 0
+
+
 # progressively capturing single neuron variability and noise correlations
 #python3 validation.py --cv -1 2 5 8 --gpu 0 --modes 0 2 --datatype 1 --ncvx 2 --lr 1e-2
 python3 models.py --data_type IP --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 2 5 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 1 --likelihood IP --mapping svgp-8 --x_mode hd --lr 1e-2 --jitter 1e-5 --gpu 0

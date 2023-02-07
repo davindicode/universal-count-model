@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
-sys.path.append("../lib")
+sys.path.append("..")
 
 import neuroprob as nprb
 from neuroprob import kernels, utils
@@ -700,7 +700,9 @@ def standard_parser(usage, description):
     )
 
     parser.add_argument("--tensor_type", default="float", action="store", type=str)
-
+    parser.add_argument("--cpu", dest="cpu", action="store_true")
+    parser.set_defaults(cpu=False)
+    
     parser.add_argument("--batch_size", default=10000, type=int)
     parser.add_argument("--cv", nargs="+", type=int)
     parser.add_argument("--cv_folds", default=5, type=int)
@@ -1217,7 +1219,11 @@ def main():
 
     args = parser.parse_args()
 
-    dev = nprb.inference.get_device(gpu=args.gpu)
+    if args.cpu:
+        dev = 'cpu'
+    else:
+        dev = nprb.inference.get_device(gpu=args.gpu)
+        
     dataset_dict = get_dataset(
         args.data_type, args.bin_size, args.data_path
     )

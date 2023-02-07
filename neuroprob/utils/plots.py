@@ -427,3 +427,37 @@ def plot_circ_posterior(
                 l_std = None
 
         l = None  # no label for each segment after first
+
+        
+        
+# Daft
+def daft_render(pgm):
+    """
+    Wrapper for rendering PGM via daft
+    """
+    for plate in pgm._plates:
+        plate.render(pgm._ctx)
+
+    for edge in pgm._edges:
+        edge.render(pgm._ctx)
+
+    for name in pgm._nodes:
+        pgm._nodes[name].render(pgm._ctx)
+
+
+
+def daft_init_figax(pgm, fig, ax):
+    """
+    Wrapper for initializing PGM via daft
+    """
+    pgm._ctx._figure = fig
+    ax.axis('off')
+
+    # Set the bounds.
+    l0 = pgm._ctx.convert(*pgm._ctx.origin)
+    l1 = pgm._ctx.convert(*(pgm._ctx.origin + pgm._ctx.shape))
+    ax.set_xlim(l0[0], l1[0])
+    ax.set_ylim(l0[1], l1[1])
+    ax.set_aspect(1)
+
+    pgm._ctx._ax = ax

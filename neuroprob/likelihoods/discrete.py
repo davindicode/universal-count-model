@@ -832,6 +832,7 @@ class Negative_binomial(_count_model):
         )
 
         nll = -n_l_rates - tfact + lfact
+        asymptotic_mask = asymptotic_mask.expand(*nll.shape)
         nll[asymptotic_mask] = nll[asymptotic_mask] + nll_r_inv[asymptotic_mask]
         nll[~asymptotic_mask] = nll[~asymptotic_mask] + nll_r[~asymptotic_mask]
         # nll = nll_r*(~asymptotic_mask) + nll_r_inv*asymptotic_mask
