@@ -246,10 +246,7 @@ class VI_optimized(nn.Module):
                         continue
 
                 d.append(param)
-
-            # for param, lr in extra_params:
-            #    d.append(param)
-
+                
             history_size = opt_lr_dict["history"] if "history" in opt_lr_dict else 10
             max_iter = opt_lr_dict["max_iter"] if "max_iter" in opt_lr_dict else 4
 
@@ -283,12 +280,6 @@ class VI_optimized(nn.Module):
                         break
 
                 d.append(opt_dict)
-
-            # for param, lr in extra_params:
-            #    opt_dict = {}
-            #    opt_dict['params'] = param
-            #    opt_dict['lr'] = lr
-            #    d.append(opt_dict)
 
             self.optim_base = opt(d, lr=opt_lr_dict["default"])
         self.sch = sch(self.optim_base)

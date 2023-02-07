@@ -8,13 +8,19 @@ from torch.nn.parameter import Parameter
 
 
 ### utilities
-def safe_sqrt(x, eps=1e-12):
+def safe_sqrt(x, eps=1e-8):
     """
-    A convenient function to avoid the NaN gradient issue of :func:`torch.sqrt`
-    at 0.
+    A convenient function to avoid the NaN gradient issue of sqrt() at 0.
+    Ref: https://github.com/pytorch/pytorch/issues/2421
     """
-    # Ref: https://github.com/pytorch/pytorch/issues/2421
-    return (x + eps).sqrt()
+    return torch.sqrt(x + eps)
+
+
+def safe_log(x, eps=1e-8):
+    """
+    A convenient function to avoid NaN at small x
+    """
+    return torch.log(x + eps)
 
 
 def linear_regression(A, B):

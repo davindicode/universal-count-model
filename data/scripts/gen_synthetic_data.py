@@ -119,7 +119,7 @@ def main():
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
-    parser.add_argument("--seed", default=123, type=int)
+    parser.add_argument("--seed", default=1, type=int)
     parser.add_argument("--savedir", default="../", type=str)
 
     args = parser.parse_args()
@@ -148,7 +148,7 @@ def main():
     covariates = hd_t[:, None]
     model = hCMP_bumps(rng, neurons)
     lamb, nu = model(covariates, sample_bin)
-    syn_train = gen_CMP(rng, lamb[None], nu[None])
+    syn_train = gen_CMP(rng, lamb[None], nu[None])[0, ...]
 
     # ground truth tuning
     steps = 100
@@ -164,7 +164,6 @@ def main():
         gt_lamb=lamb, 
         gt_nu=nu, 
     )
-    print(syn_train.max())
 
     # modulated Poisson
     neurons = 50
@@ -172,7 +171,7 @@ def main():
     covariates = np.stack([hd_t, a_t], axis=1)
     model = IP_bumps(rng, neurons)
     rate = model(covariates)
-    syn_train = rng.poisson(rate * sample_bin).astype(float)
+    syn_train = rng.poisson(rate * sample_bin)[0, ...].astype(float)
 
     # ground truth tuning
     steps = 100
@@ -191,7 +190,6 @@ def main():
         covariates=covariates, 
         gt_rate = gt_rate, 
     )
-    print(syn_train.max())
 
 
 if __name__ == "__main__":

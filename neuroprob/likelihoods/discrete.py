@@ -10,7 +10,7 @@ from torch.nn.parameter import Parameter
 import torch.distributions as dist
 
 from . import base
-
+from ..utils.signal import safe_log
 
 
 def gen_categorical(rng, p):
@@ -134,10 +134,10 @@ class _count_model(base._likelihood):
             self.tfact.append(spikes * torch.log(self.tbin.cpu()))
             self.lfact.append(torch.lgamma(spikes + 1.0))
 
-    def KL_prior(self, importance_weighted=False):
+    def KL_prior(self):
         """ """
         if self.dispersion_mapping is not None:
-            return self.dispersion_mapping.KL_prior(importance_weighted)
+            return self.dispersion_mapping.KL_prior()
         else:
             return 0
 
@@ -160,7 +160,7 @@ class _count_model(base._likelihood):
         if self.inv_link == "exp":  # spike count times log rate
             n_l_rates = spikes * h
         else:
-            n_l_rates = spikes * torch.log(rates + 1e-12)
+            n_l_rates = spikes * safe_log(rates + 1e-12)
 
         return rates, n_l_rates, spikes
 
@@ -533,7 +533,7 @@ class Bernoulli(_count_model):
 
     def nll(self, b, rates, n_l_rates, spikes, neuron, disper_param=None):
         tfact = self.get_saved_factors(b, neuron, spikes)
-        nll = -(n_l_rates + tfact + (1 - spikes) * torch.log(1 - rates * self.tbin))
+        nll = -(n_l_rates + tfact + (1 - spikes) * safe_log(1 - rates * self.tbin))
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -681,10 +681,10 @@ class ZI_Poisson(_count_model):
         T = rates * self.tbin
         zero_spikes = spikes == 0  # mask
         nll_ = (
-            -n_l_rates + T - tfact + lfact - torch.log(1.0 - alpha_)
+            -n_l_rates + T - tfact + lfact - safe_log(1.0 - alpha_)
         )  # -log (1-alpha)*p(N)
         p = torch.exp(-nll_)  # stable as nll > 0
-        nll_0 = -torch.log(alpha_ + p)
+        nll_0 = -safe_log(alpha_ + p)
         nll = zero_spikes * nll_0 + (~zero_spikes) * nll_
         return nll.sum(1)
 
@@ -740,7 +740,10 @@ class hZI_Poisson(ZI_Poisson):
         self.dispersion_mapping_f = torch.sigmoid
 
     def constrain(self):
-        return
+        self.dispersion_mapping.constrain()
+        
+    def KL_prior(self):
+        return self.dispersion_mapping.KL_prior()
 
 
 class Negative_binomial(_count_model):
@@ -821,7 +824,7 @@ class Negative_binomial(_count_model):
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         lambd = rates * self.tbin
         fac_lgamma = -torch.lgamma(r_ + spikes) + torch.lgamma(r_)
-        fac_power = (spikes + r_) * torch.log(r_ + lambd) - r_ * torch.log(r_)
+        fac_power = (spikes + r_) * safe_log(r_ + lambd) - r_ * safe_log(r_)
 
         nll_r = fac_power + fac_lgamma
         nll_r_inv = lambd + torch.log(
@@ -889,7 +892,10 @@ class hNegative_binomial(Negative_binomial):
         self.dispersion_mapping_f = torch.nn.functional.softplus
 
     def constrain(self):
-        return
+        self.dispersion_mapping.constrain()
+        
+    def KL_prior(self):
+        return self.dispersion_mapping.KL_prior()
 
 
 class COM_Poisson(_count_model):
@@ -974,7 +980,7 @@ class COM_Poisson(_count_model):
             nu_ = torch.exp(disper_param)  # nn.functional.softplus
 
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
-        log_lambda = torch.log(rates * self.tbin + 1e-12)
+        log_lambda = safe_log(rates * self.tbin + 1e-12)
 
         l_Z = self.log_Z(log_lambda, nu_)
 
@@ -1034,4 +1040,7 @@ class hCOM_Poisson(COM_Poisson):
         self.dispersion_mapping_f = lambda x: x
 
     def constrain(self):
-        return
+        self.dispersion_mapping.constrain()
+        
+    def KL_prior(self):
+        return self.dispersion_mapping.KL_prior()

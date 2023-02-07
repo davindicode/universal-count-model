@@ -5,14 +5,8 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from matplotlib import patches
-from torch.nn.parameter import Parameter
 
-sys.path.append("../lib/")
+sys.path.append("../lib")
 import neuroprob.utils as utils
 
 

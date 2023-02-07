@@ -11,11 +11,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
-sys.path.append("../lib/")
+sys.path.append("../lib")
 
 import neuroprob as nprb
 from neuroprob import kernels, utils
-
+from neuroprob.mappings.base import _input_mapping
 
 
 
@@ -81,17 +81,16 @@ def get_dataset(data_type, bin_size, path):
 
         if data_type[:4] == "hCMP":
             rcov = {
-                "hd": syn_data["rhd_t"],
+                "hd": syn_data["hd_t"],
             }
 
         elif data_type[:5] == "modIP":
-            rcov = {"hd": syn_data["rhd_t"], "a": syn_data["ra_t"]}
+            rcov = {"hd": syn_data["hd_t"], "a": syn_data["a_t"]}
 
         rc_t = syn_data["spktrain"]
         tbin = syn_data["tbin"].item()
-
-        resamples = rc_t.shape[1]
-        units_used = rc_t.shape[0]
+        
+        units_used, resamples = rc_t.shape
 
     name = data_type
 
@@ -129,67 +128,65 @@ class Siren(nn.Module):
     def forward(self, input):
         return torch.sin(input)
 
-
-
-class MLP(nn.Module):
+    
+    
+class FFNN(_input_mapping):
     """
-    Multi-layer perceptron class
+    Artificial neural network rate model.
     """
-
-    def __init__(
-        self, layers, in_dims, out_dims, nonlin=nn.ReLU(), out=None, bias=True
-    ):
-        super().__init__()
+    def __init__(self, input_dim, angle_dims, out_dims, layers, nonlin=Siren, tensor_type=torch.float, 
+                 active_dims=None, bias=True):
+        """
+        :param nn.Module mu_ANN: ANN parameterizing the mean function mapping
+        :param nn.Module sigma_ANN: ANN paramterizing the standard deviation mapping if stochastic
+        """
+        super().__init__(input_dim, out_dims, tensor_type, active_dims)
+        euclid_dims = input_dim - angle_dims
+        self.angle_dims = angle_dims
+        
+        in_dims = 2 * angle_dims + euclid_dims
         net = nn.ModuleList([])
         if len(layers) == 0:
             net.append(nn.Linear(in_dims, out_dims, bias=bias))
         else:
             net.append(nn.Linear(in_dims, layers[0], bias=bias))
-            net.append(nonlin)
+            net.append(nonlin())
             for k in range(len(layers) - 1):
                 net.append(nn.Linear(layers[k], layers[k + 1], bias=bias))
-                net.append(nonlin)
+                net.append(nonlin())
                 # net.append(nn.BatchNorm1d())
             net.append(nn.Linear(layers[-1:][0], out_dims, bias=bias))
-        if out is not None:
-            net.append(out)
-        self.net = nn.Sequential(*net)
-
-    def forward(self, input):
-        return self.net(input)
-
-    
-    
-class FFNN_model(nn.Module):
-    """
-    Multi-layer perceptron class
-    """
-
-    def __init__(self, layers, angle_dims, euclid_dims, out_dims):
+        
+        self.add_module('net', nn.Sequential(*net))
+        
+        
+    def compute_F(self, XZ):
         """
-        Assumes angular dimensions to be ordered first in the input of shape (2*dimensions,)
+        The input to the ANN will be of shape (samples*timesteps, dims).
+        
+        :param torch.Tensor cov: covariates with shape (samples, timesteps, dims)
+        :returns: inner product with shape (samples, neurons, timesteps)
+        :rtype: torch.tensor
         """
-        super().__init__()
-        self.angle_dims = angle_dims
-        self.in_dims = 2 * angle_dims + euclid_dims
-        net = utils.pytorch.MLP(
-            layers, self.in_dims, out_dims, nonlin=utils.pytorch.Siren(), out=None
-        )
-        self.add_module("net", net)
-
-    def forward(self, input):
-        """
-        Input of shape (samplesxtime, dims)
-        """
+        XZ = self._XZ(XZ)
+        incov = XZ.view(-1, XZ.shape[-1])
+        
         embed = torch.cat(
             (
-                torch.cos(input[:, : self.angle_dims]),
-                torch.sin(input[:, : self.angle_dims]),
-                input[:, self.angle_dims :],
+                torch.cos(incov[:, :self.angle_dims]),
+                torch.sin(incov[:, :self.angle_dims]),
+                incov[:, self.angle_dims:],
             ),
             dim=-1,
         )
-        return self.net(embed)
+        mu = self.net(embed).view(*XZ.shape[:2], -1).permute(0, 2, 1)
+        return mu, 0
+
+    
+    def sample_F(self, XZ):
+        self.compute_F(XZ)[0]
+
+        
 
 
 def enc_used(model_dict, covariates, learn_mean):
@@ -302,13 +299,21 @@ def enc_used(model_dict, covariates, learn_mean):
         )
 
     elif map_mode_comps[0] == "ffnn":  # feedforward neural network mapping
-        rate_model = FFNN_params(in_dims, enc_layers, angle_dims, inner_dims, inv_link)
-
-        mu_ANN = FFNN_model(
-            enc_layers, angle_dims, tot_dims - angle_dims, neurons
-        )
-        mapping = mdl.parametrics.FFNN(
-            tot_dims, neurons, inv_link, mu_ANN, sigma_ANN=None, tens_type=torch.float
+        angle_dims = 0
+        
+        for xc in x_mode_comps:
+            
+            if xc == "hd" or xc == "omega":
+                angle_dims += 1
+            
+        for zc in x_mode_comps:
+            if zc[:1] == "T":
+                dz = int(zc[1:])
+                angle_dims += dz
+                
+        enc_layers = [int(ls) for ls in map_mode_comps[1:]]
+        mapping = FFNN(
+            in_dims, angle_dims, out_dims, enc_layers, tensor_type=torch.float
         )
 
     else:
@@ -512,7 +517,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
             d_z = int(zc[1:])
 
             if d_z == 1:
-                p = nprb.inputs.priors.dAR1(
+                p = nprb.inputs.priors.tAR1(
                     torch.tensor(0.0),
                     torch.tensor(4.0),
                     "ring",
@@ -520,7 +525,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                     tensor_type=tensor_type,
                 )
             else:
-                p = nprb.inputs.priors.dAR1(
+                p = nprb.inputs.priors.tAR1(
                     torch.tensor([0.0] * d_z),
                     torch.tensor([4.0] * d_z),
                     "ring",
@@ -536,7 +541,7 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
                 tensor_type=tensor_type,
             )
 
-            latents += [nprb.inputs.prior_variational_pair(_z, p, v)]
+            latents += [nprb.inputs.prior_variational_pair(d_z, p, v)]
 
         elif zc != "":
             raise ValueError("Invalid latent covariate type")
@@ -591,12 +596,16 @@ def get_likelihood(model_dict, cov, enc_used):
 
     if ll_mode_comps[0] == "U":
         inv_link = "identity"
+        
     elif ll_mode == "IBP":
         inv_link = lambda x: torch.sigmoid(x) / tbin
+        
     elif ll_mode_comps[-1] == "exp":
         inv_link = "exp"
+        
     elif ll_mode_comps[-1] == "spl":
         inv_link = "softplus"
+        
     else:
         raise ValueError("Likelihood inverse link function not defined")
 
@@ -758,11 +767,7 @@ def preprocess_data(
         D_min = 0
         D_max = 0
         dd = [0]
-
-    # history of spike train filter
-    #rcov = {n: rc[hist_len:] for n, rc in rcov.items()}
-    #resamples -= hist_len
-
+        
     D = -D_max + D_min  # total delay steps - 1
     for delay in dd:
 

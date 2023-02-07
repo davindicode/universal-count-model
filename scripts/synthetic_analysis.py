@@ -42,8 +42,8 @@ import pickle
 ###
 
 data_path = '../data/'
-data_type = 'modIP'
-bin_size = 40
+data_type = 'modIP1'
+bin_size = 1
 
 dataset_dict = models.get_dataset(data_type, bin_size, data_path)
 
@@ -94,22 +94,6 @@ use_neuron = list(range(neurons))
 rhd_t = rcov[0]
 trials = 1
 covariates = [rhd_t[None, :, None].repeat(trials, axis=0)]
-glm = validation.CMP_hdc(tbin, resamples, covariates, neurons, trials=trials)
-glm.to(dev)
-
-checkpoint = torch.load('../scripts/data/hCMP.pt', map_location='cpu')
-
-glm.load_state_dict(checkpoint['model'])
-
-
-
-data_dict = {
-    'use_neuron': use_neuron, 
-    'max_count': max_count, 
-    'tbin': tbin, 
-    'rcov': rcov, 
-}
-
 
 
 
