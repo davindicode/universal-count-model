@@ -10,96 +10,8 @@ import neuroprob as nprb
 from neuroprob import utils
 
 
-### model ###
-def sample_F(mapping, likelihood, covariates, MC, F_dims, trials=1, eps=None):
-    """
-    Sample F from diagonalized variational posterior.
-
-    :returns: F of shape (MCxtrials, outdims, time)
-    """
-    cov = mapping.to_XZ(covariates, trials)
-    if mapping.MC_only or eps is not None:
-        samples = mapping.sample_F(cov, eps=eps)[
-            :, F_dims, :
-        ]  # TODO: cov_samples vs ll_samples?
-        h = samples.view(-1, trials, *samples.shape[1:])
-    else:
-        F_mu, F_var = mapping.compute_F(cov)
-        h = likelihood.mc_gen(F_mu, F_var, MC, F_dims)
-
-    return h
-
-
-def posterior_rate(
-    mapping, likelihood, covariates, MC, F_dims, trials=1, percentiles=[0.05, 0.5, 0.95]
-):
-    """
-    Sample F from diagonalized variational posterior.
-
-    :returns: F of shape (MCxtrials, outdims, time)
-    """
-    cov = mapping.to_XZ(covariates, trials)
-    if mapping.MC_only:
-        F = mapping.sample_F(cov)[:, F_dims, :]  # TODO: cov_samples vs ll_samples?
-        samples = likelihood.f(F.view(-1, trials, *samples.shape[1:]))
-    else:
-        F_mu, F_var = mapping.compute_F(cov)
-        samples = likelihood.sample_rate(
-            F_mu[:, F_dims, :], F_var[:, F_dims, :], trials, MC
-        )
-
-    return utils.signal.percentiles_from_samples(samples, percentiles)
-
-
-def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):
-    """ """
-    cov = mapping.to_XZ(covariates, trials)
-    eps = torch.randn(
-        (MC * trials, *cov.shape[1:-1]),
-        dtype=mapping.tensor_type,
-        device=mapping.dummy.device,
-    )
-    # mapping.jitter = 1e-4
-    samples = mapping.sample_F(cov, eps)
-    T = samples.view(-1, trials, *samples.shape[1:])
-
-    return T
-
-
-def sample_Y(mapping, likelihood, covariates, trials, MC=1):
-    """
-    Use the posterior mean rates. Sampling gives np.ndarray
-    """
-    cov = mapping.to_XZ(covariates, trials)
-
-    with torch.no_grad():
-
-        F_mu, F_var = mapping.compute_F(cov)
-        rate = likelihood.sample_rate(
-            F_mu, F_var, trials, MC
-        )  # MC, trials, neuron, time
-
-        rate = rate.mean(0).cpu().numpy()
-        syn_train = likelihood.sample(rate, XZ=cov)
-
-    return syn_train
-
 
 ### UCM ###
-def compute_P(full_model, covariates, show_neuron, MC=1000, trials=1):
-    """
-    Compute predictive count distribution given X.
-    """
-    F_dims = full_model.likelihood._neuron_to_F(show_neuron)
-    h = sample_F(
-        full_model.mapping, full_model.likelihood, covariates, MC, F_dims, trials=trials
-    )
-    logp = full_model.likelihood.get_logp(h, show_neuron).data  # samples, N, time, K
-
-    P_mc = torch.exp(logp)
-    return P_mc
-
-
 def marginalized_P(
     full_model, eval_points, eval_dims, rcov, bs, use_neuron, MC=100, skip=1
 ):
@@ -144,30 +56,6 @@ def marginalized_P(
         P_tot[..., e, :] = P_.mean(-2)
 
     return P_tot
-
-
-
-# metrics
-def metric(x, y, topology="euclid"):
-    """
-    Returns the geodesic displacement between x and y, (x-y).
-
-    :param torch.tensor x: input x of any shape
-    :param torch.tensor y: input y of same shape as x
-    :returns: x-y tensor of geodesic distances
-    :rtype: torch.tensor
-    """
-    if topology == "euclid":
-        xy = x - y
-    elif topology == "torus":
-        xy = (x - y) % (2 * np.pi)
-        xy[xy > np.pi] -= 2 * np.pi
-    elif topology == "circ":
-        xy = 2 * (1 - torch.cos(x - y))
-    else:
-        raise NotImplementedError
-    # xy[xy < 0] = -xy[xy < 0] # abs
-    return xy
 
 
 
@@ -318,6 +206,29 @@ def compute_count_stats(
 
     return q_
 
+
+
+# metrics
+def metric(x, y, topology="euclid"):
+    """
+    Returns the geodesic displacement between x and y, (x-y).
+
+    :param torch.tensor x: input x of any shape
+    :param torch.tensor y: input y of same shape as x
+    :returns: x-y tensor of geodesic distances
+    :rtype: torch.tensor
+    """
+    if topology == "euclid":
+        xy = x - y
+    elif topology == "torus":
+        xy = (x - y) % (2 * np.pi)
+        xy[xy > np.pi] -= 2 * np.pi
+    elif topology == "circ":
+        xy = 2 * (1 - torch.cos(x - y))
+    else:
+        raise NotImplementedError
+    # xy[xy < 0] = -xy[xy < 0] # abs
+    return xy
 
 
 # align latent

@@ -4,10 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
-from .base import _prior
-
 from .. import distributions as dist
 
+from .base import _prior
 
 
 class IndNormal(_prior):
@@ -33,7 +32,7 @@ class IndNormal(_prior):
         ### prior ###
         if topo == "ring":
             self.prior_dist = dist.Tn_Normal
-            
+
         elif topo == "euclid":
             self.prior_dist = dist.Rn_Normal
         else:
@@ -75,7 +74,7 @@ class IndUniform(_prior):
 
         if topo == "ring":
             self.prior_dist = dist.Tn_Uniform
-            
+
         elif topo == "euclid":
             self.prior_dist = dist.Rn_Uniform
         else:
@@ -246,7 +245,7 @@ class tAR1(ARNormal):
                 return x + self.loc, std
 
         transition = transition_(loc, std, learn_loc, learn_std, tensor_type)
-        super().__init__(transition, 'ring', dims, 1, tensor_type)
+        super().__init__(transition, "ring", dims, 1, tensor_type)
 
         self.prior_dist = dist.Tn_Uniform
 

@@ -5,8 +5,51 @@ import scipy.stats as scstats
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torch.nn.parameter import Parameter
+
+
+
+def percentiles_from_samples(
+    samples, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
+):
+    """
+    Compute quantile intervals from samples, samples has shape (sample_dim, event_dims..., T).
+
+    :param torch.tensor samples: input samples of shape (MC, event_dims...)
+    :param list percentiles: list of percentile values to look at
+    :param int smooth_length: time steps over which to smooth with uniform block
+    :returns: list of tensors representing percentile boundaries
+    :rtype: list
+    """
+    num_samples = samples.size(0)
+    T = samples.size(-1)
+    prev_shape = samples.shape[1:]
+    if len(samples.shape) == 2:
+        samples = samples[:, None, :]
+    else:
+        samples = samples.view(num_samples, -1, T)
+
+    samples = samples.sort(dim=0)[0]
+    percentile_samples = [
+        samples[int(num_samples * percentile)] for percentile in percentiles
+    ]
+
+    with torch.no_grad():  # Smooth the samples
+        Conv1D = nn.Conv1d(
+            1,
+            1,
+            smooth_length,
+            padding=smooth_length // 2,
+            bias=False,
+            padding_mode=padding_mode,
+        ).to(samples.device)
+        Conv1D.weight.fill_(1.0 / smooth_length)
+        percentiles_samples = [
+            Conv1D(percentile_sample[:, None, :]).view(prev_shape)
+            for percentile_sample in percentile_samples
+        ]
+
+    return percentiles_samples
+
 
 
 # count statistics
@@ -210,7 +253,6 @@ def count_KS_method(
     return quantiles
 
 
-
 def q_to_Z(quantiles, LIM=1e-15):
     """
     Inverse transform to Gaussian variables from uniform variables.
@@ -271,5 +313,3 @@ def KS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
     p_DS = 2.0 * (1 - scstats.norm.cdf(T_DS_))
     p_KS = np.exp(-2 * samples * T_KS**2)
     return T_DS, T_KS, sign_DS, sign_KS, p_DS, p_KS
-
-

@@ -1,4 +1,4 @@
 #! /usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from . import neural, signal, stats
+from . import model, neural, plots, stats

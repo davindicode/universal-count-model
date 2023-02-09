@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 
-
 def _expand_cov(cov):
     if len(cov.shape) == 1:  # expand arrays from (timesteps,)
         cov = cov[None, None, :, None]
@@ -17,7 +16,6 @@ def _expand_cov(cov):
         )
 
     return cov
-
 
 
 class _input_mapping(nn.Module):

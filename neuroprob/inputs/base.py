@@ -17,9 +17,8 @@ class _prior(nn.Module):
 
     def log_p(self, x, initial):
         raise NotImplementedError
-        
-        
-        
+
+
 class _variational(nn.Module):
     """
     base class for variational distributions
@@ -41,7 +40,6 @@ class _variational(nn.Module):
         raise NotImplementedError
 
 
-        
 class _VI_object(nn.Module):
     """
     input objects for variational inference
@@ -55,7 +53,7 @@ class _VI_object(nn.Module):
 
     def constrain(self):
         return
-        
+
     def validate(self, tsteps, trials, batches):
         """ """
         raise NotImplementedError

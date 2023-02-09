@@ -3,4 +3,4 @@
 
 from . import priors, variational
 
-from .combine import prior_variational_pair, probabilistic_mapping, input_group
+from .combine import input_group, prior_variational_pair, probabilistic_mapping

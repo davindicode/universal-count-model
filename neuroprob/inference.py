@@ -9,7 +9,6 @@ from tqdm.autonotebook import tqdm
 from . import base, distributions as dist
 
 
-
 def get_device(gpu=0):
     """
     Enable PyTorch with CUDA if available.
@@ -26,7 +25,6 @@ def get_device(gpu=0):
     )
     print("Using device: %s" % dev)
     return dev
-
 
 
 ### variational inference class ###
@@ -177,9 +175,7 @@ class VI_optimized(nn.Module):
         neuron = self.likelihood._validate_neuron(neuron)
 
         ### sample input ###
-        XZ, KL_prior_in = self.input_group.sample_XZ(
-            b, cov_samples
-        )
+        XZ, KL_prior_in = self.input_group.sample_XZ(b, cov_samples)
         if len(XZ.shape) > 4:  # normally (samples, outdims, timesteps, dims)
             enumeration = True
         else:
@@ -196,7 +192,9 @@ class VI_optimized(nn.Module):
                 XZ
             )  # mean and covariance of input mapping (samples, neurons, timesteps)
 
-        KL_prior_m = self.mapping.KL_prior()  # prior may need quantities computed in compute_F, e.g. Luu, KTT
+        KL_prior_m = (
+            self.mapping.KL_prior()
+        )  # prior may need quantities computed in compute_F, e.g. Luu, KTT
         if ll_mode == "direct":
             F_var = None
 
@@ -246,7 +244,7 @@ class VI_optimized(nn.Module):
                         continue
 
                 d.append(param)
-                
+
             history_size = opt_lr_dict["history"] if "history" in opt_lr_dict else 10
             max_iter = opt_lr_dict["max_iter"] if "max_iter" in opt_lr_dict else 4
 
@@ -256,7 +254,7 @@ class VI_optimized(nn.Module):
                 history_size=history_size,
                 max_iter=max_iter,
             )
-            
+
         else:
             for key in opt_lr_dict:
                 if key == "default":

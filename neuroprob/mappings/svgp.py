@@ -2,15 +2,30 @@ from numbers import Number
 
 import numpy as np
 import torch
+import torch.distributions as dist
 import torch.nn as nn
 from torch.nn.parameter import Parameter
-import torch.distributions as dist
 
 from . import base
-from ..utils.signal import eye_like
 
 
 # linear algebra computations
+def eye_like(value, m, n=None):
+    """
+    Create an identity tensor, from Pyro [1].
+
+    References:
+
+    [1] `Pyro: Deep Universal Probabilistic Programming`, E. Bingham et al. (2018)
+
+    """
+    if n is None:
+        n = m
+    eye = torch.zeros(m, n, dtype=value.dtype, device=value.device)
+    eye.view(-1)[: min(m, n) * n : n + 1] = 1
+    return eye
+
+
 def p_F_U(
     X,
     X_u,
@@ -129,15 +144,12 @@ def p_F_U(
     return loc, cov, Lff
 
 
-
 class inducing_points(nn.Module):
     """
     Class to hold inducing points
     """
 
-    def __init__(
-        self, out_dims, inducing_points, MAP=False, tensor_type=torch.float
-    ):
+    def __init__(self, out_dims, inducing_points, MAP=False, tensor_type=torch.float):
         """
         :param list constraints: list of tupes (dl, du, topo) where dl:du dimensions are constrained on topology topo
         """
@@ -167,7 +179,6 @@ class inducing_points(nn.Module):
             self.u_scale_tril.data[:, range(Nu), range(Nu)] = torch.clamp(
                 self.u_scale_tril.data[:, range(Nu), range(Nu)], min=1e-12
             )
-            
 
 
 class SVGP(base._input_mapping):
@@ -223,7 +234,7 @@ class SVGP(base._input_mapping):
         self.jitter = jitter
         self.whiten = whiten
         self.kernel_regression = kernel_regression
-        
+
         ### GP mean ###
         if isinstance(mean, Number):
             if learn_mean:
@@ -248,7 +259,7 @@ class SVGP(base._input_mapping):
 
         else:
             raise NotImplementedError("Mean type is not supported.")
-            
+
         ### kernel ###
         if kernel.input_dims != self.input_dims:
             ValueError("Kernel dimensions do not match expected input dimensions")
@@ -298,7 +309,7 @@ class SVGP(base._input_mapping):
                 p = dist.MultivariateNormal(
                     zero_loc, scale_tril=self.Luu
                 )  # .to_event(zero_loc.dim() - 1)
-                
+
             q = dist.MultivariateNormal(
                 self.induc_pts.u_loc, scale_tril=self.induc_pts.u_scale_tril
             )  # .to_event(self.u_loc.dim()-1)
@@ -372,7 +383,7 @@ class SVGP(base._input_mapping):
             jitter=self.jitter,
         )
         cov.view(-1, cov.shape[-1] ** 2)[:, :: cov.shape[-1] + 1] += self.jitter
-        
+
         L = torch.linalg.cholesky(cov.double()).type(self.tensor_type)
 
         if samples > 1:  # expand
@@ -380,8 +391,6 @@ class SVGP(base._input_mapping):
             L = L.repeat(samples)
 
         if eps is None:  # sample random vector
-            eps = torch.randn(
-                XZ.shape[:-1], dtype=self.tensor_type, device=cov.device
-            )
+            eps = torch.randn(XZ.shape[:-1], dtype=self.tensor_type, device=cov.device)
 
         return loc + self.mean_function(XZ) + (L * eps[..., None, :]).sum(-1)

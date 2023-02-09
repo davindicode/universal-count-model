@@ -4,10 +4,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
-from .base import _variational
-
 from .. import distributions as dist
 
+from .base import _variational
 
 
 class IndNormal(_variational):
@@ -15,9 +14,7 @@ class IndNormal(_variational):
     Independent over time steps, normal variational distribution
     """
 
-    def __init__(
-        self, mu, std, topo, dims, tensor_type=torch.float
-    ):
+    def __init__(self, mu, std, topo, dims, tensor_type=torch.float):
         """
         :param torch.Tensor mu: variational mean of shape (time, (optionally) dims, (optionally) trials)
         :param torch.Tensor std: variational std of shape (time, (optionally) dims, (optionally) trials)
@@ -31,10 +28,10 @@ class IndNormal(_variational):
         ### variational ###
         if topo == "ring":
             self.variational = dist.Tn_Normal
-        
+
         elif topo == "euclid":
             self.variational = dist.Rn_Normal
-            
+
         else:
             raise NotImplementedError("Topology not supported.")
 
@@ -102,7 +99,7 @@ class Delta(_variational):
         (time, dims) if dims > 1 or (time, dims, trial) if trials > 1, have explicit event (and trial) dimension
         otherwise standard one dimensional arrays, fast
         """
-        
+
         mu, std = self.mu[t_lower:t_upper, ...], self.lf(
             self.finv_std[t_lower:t_upper, ...]
         )  # time, (dims, trial)

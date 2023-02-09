@@ -1,16 +1,17 @@
-import numbers
 import math
+import numbers
 
 import numpy as np
-from scipy.special import factorial
 
 import torch
-import torch.nn as nn
-from torch.nn.parameter import Parameter
 import torch.distributions as dist
+import torch.nn as nn
+from scipy.special import factorial
+from torch.nn.parameter import Parameter
+
+from ..base import safe_log
 
 from . import base
-from ..utils.signal import safe_log
 
 
 def gen_categorical(rng, p):
@@ -22,13 +23,11 @@ def gen_ZIP(rng, lamb, alpha):
     return (1.0 - zero_mask) * rng.poisson(lamb)
 
 
-
 def gen_NB(rng, lamb, r):
     s = np.random.gamma(
         r, lamb / r
     )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
     return rng.poisson(s)
-
 
 
 def gen_CMP(rng, lamb, nu, max_rejections=1000):
@@ -63,13 +62,11 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
                 y_dash = rng.poisson(lamb__)
                 _lamb_ = np.floor(lamb__)
                 alpha = (
-                    lamb__ ** (y_dash - _lamb_)
-                    / factorial(y_dash)
-                    * factorial(_lamb_)
+                    lamb__ ** (y_dash - _lamb_) / factorial(y_dash) * factorial(_lamb_)
                 ) ** (nu__ - 1)
 
                 u = rng.uniform(size=lamb__.shape)
-                selected = (u <= alpha)
+                selected = u <= alpha
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -92,7 +89,7 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
                 ) ** nu__
 
                 u = rng.uniform(size=lamb__.shape)
-                selected = (u <= alpha)
+                selected = u <= alpha
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -102,7 +99,6 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
 
     return Y
 
-    
 
 class _count_model(base._likelihood):
     """
@@ -172,7 +168,7 @@ class _count_model(base._likelihood):
             dh = self.dispersion_mapping.sample_F(XZ, samples)[:, neuron, :]
         else:
             disp, disp_var = self.dispersion_mapping.compute_F(XZ)
-            dh = self.mc_gen(disp, disp_var, samples, neuron)
+            dh = base.mc_gen(disp, disp_var, samples, neuron)
 
         return self.dispersion_mapping_f(dh)  # watch out for underflow or overflow here
 
@@ -191,11 +187,11 @@ class _count_model(base._likelihood):
         :rtype: tuple of torch.tensors
         """
         if mode == "MC":
-            h = self.mc_gen(F_mu, F_var, samples, neuron)  # h has only observed neurons
+            h = base.mc_gen(F_mu, F_var, samples, neuron)  # h has only observed neurons
             rates, n_l_rates, spikes = self.sample_helper(h, b, neuron, samples)
             ws = torch.tensor(1.0 / rates.shape[0])
         elif mode == "GH":
-            h, ws = self.gh_gen(F_mu, F_var, samples, neuron)
+            h, ws = base.gh_gen(F_mu, F_var, samples, neuron)
             rates, n_l_rates, spikes = self.sample_helper(h, b, neuron, samples)
             ws = ws[:, None]
         elif mode == "direct":  # no variational uncertainty
@@ -254,11 +250,7 @@ class Parallel_Linear(nn.Module):
         :param torch.tensor input: input of shape (batch, channels, in_dims)
         """
         W = self.weight[None, channels, ...]
-        B = (
-            0
-            if self.bias is None
-            else self.bias[None, channels, :]
-        )
+        B = 0 if self.bias is None else self.bias[None, channels, :]
 
         return (W * input[..., None, :]).sum(-1) + B
 
@@ -266,9 +258,8 @@ class Parallel_Linear(nn.Module):
         return "in_features={}, out_features={}, channels={}, bias={}".format(
             self.in_features, self.out_features, self.channels, self.bias is not None
         )
-    
-    
-    
+
+
 class Universal(base._likelihood):
     """
     Universal count distribution with finite cutoff at max_count.
@@ -283,11 +274,13 @@ class Universal(base._likelihood):
         self.C = C
         self.neurons = neurons
         self.lsoftm = torch.nn.LogSoftmax(dim=-1)
-        
+
         self.basis = self.get_basis(basis_mode)
         expand_C = torch.cat(
             [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
-        ).shape[-1]  # size of expanded vector
+        ).shape[
+            -1
+        ]  # size of expanded vector
 
         mapping_net = Parallel_Linear(
             expand_C, (max_count + 1), neurons
@@ -336,9 +329,9 @@ class Universal(base._likelihood):
         g = onehot_.shape[0]
         onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
         return onehot_.view(*onehot.shape)
-    
+
     def get_basis(self, basis_mode):
-        
+
         if basis_mode == "id":
             basis = (lambda x: x,)
 
@@ -382,7 +375,7 @@ class Universal(base._likelihood):
             raise ValueError("Invalid basis expansion")
 
         return basis
-        
+
     def get_logp(self, F_mu, neuron):
         """
         Compute count probabilities from the rate model output.
@@ -393,12 +386,14 @@ class Universal(base._likelihood):
         """
         T = F_mu.shape[-1]
         samples = F_mu.shape[0]
-        
-        inps = F_mu.permute(0, 2, 1).reshape(samples * T, -1)  # (samplesxtime, in_dimsxchannels)
+
+        inps = F_mu.permute(0, 2, 1).reshape(
+            samples * T, -1
+        )  # (samplesxtime, in_dimsxchannels)
         inps = inps.view(inps.shape[0], -1, self.C)
         inps = torch.cat([f_(inps) for f_ in self.basis], dim=-1)
         a = self.mapping_net(inps, neuron).view(samples * T, -1)  # samplesxtime, NxK
-        
+
         log_probs = self.lsoftm(a.view(samples, T, -1, self.K + 1).permute(0, 2, 1, 3))
         return log_probs
 
@@ -452,23 +447,23 @@ class Universal(base._likelihood):
         F_dims = self._neuron_to_F(neuron)
 
         if mode == "MC":
-            h = self.mc_gen(
+            h = base.mc_gen(
                 F_mu, F_var, samples, F_dims
             )  # h has only observed neurons (from neuron)
             logp, tar = self.sample_helper(h, b, neuron, samples)
             ws = torch.tensor(1.0 / logp.shape[0])
-            
+
         elif mode == "GH":
-            h, ws = self.gh_gen(F_mu, F_var, samples, F_dims)
+            h, ws = base.gh_gen(F_mu, F_var, samples, F_dims)
             logp, tar = self.sample_helper(h, b, neuron, samples)
             ws = ws[:, None]
-            
+
         elif mode == "direct":
             rates, n_l_rates, spikes = self.sample_helper(
                 F_mu[:, F_dims, :], b, neuron, samples
             )
             ws = torch.tensor(1.0 / rates.shape[0])
-            
+
         else:
             raise NotImplementedError
 
@@ -486,13 +481,13 @@ class Universal(base._likelihood):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         F_dims = self._neuron_to_F(neuron)
         log_probs = self.get_logp(
             torch.tensor(F_mu[:, F_dims, :], dtype=self.tensor_type)
         )
         cnt_prob = torch.exp(log_probs)
-        
+
         return gen_categorical(rng, cnt_prob.cpu().numpy())
 
 
@@ -546,7 +541,7 @@ class Bernoulli(_count_model):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         p = rate[:, neuron, :] * self.tbin.item()
         return rng.binomial(1, p)
@@ -624,7 +619,7 @@ class Poisson(_count_model):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         return rng.poisson(rate[:, neuron, :] * self.tbin.item())
 
@@ -698,7 +693,7 @@ class ZI_Poisson(_count_model):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
@@ -718,7 +713,6 @@ class ZI_Poisson(_count_model):
                 )
 
         return gen_ZIP(rng, rate_ * self.tbin.item(), alpha_)
-
 
 
 class hZI_Poisson(ZI_Poisson):
@@ -741,7 +735,7 @@ class hZI_Poisson(ZI_Poisson):
 
     def constrain(self):
         self.dispersion_mapping.constrain()
-        
+
     def KL_prior(self):
         return self.dispersion_mapping.KL_prior()
 
@@ -849,7 +843,7 @@ class Negative_binomial(_count_model):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
@@ -873,7 +867,6 @@ class Negative_binomial(_count_model):
         return gen_NB(rng, rate_ * self.tbin.item(), r_)
 
 
-
 class hNegative_binomial(Negative_binomial):
     """
     Heteroscedastic NB
@@ -894,7 +887,7 @@ class hNegative_binomial(Negative_binomial):
 
     def constrain(self):
         self.dispersion_mapping.constrain()
-        
+
     def KL_prior(self):
         return self.dispersion_mapping.KL_prior()
 
@@ -998,7 +991,7 @@ class COM_Poisson(_count_model):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         lamb_ = rate[:, neuron, :] * self.tbin.item()
 
@@ -1009,7 +1002,7 @@ class COM_Poisson(_count_model):
                 .data.cpu()
                 .numpy()[:, neuron, :]
             )
-            
+
         else:
             samples = rate.shape[0]
             with torch.no_grad():
@@ -1042,6 +1035,6 @@ class hCOM_Poisson(COM_Poisson):
 
     def constrain(self):
         self.dispersion_mapping.constrain()
-        
+
     def KL_prior(self):
         return self.dispersion_mapping.KL_prior()

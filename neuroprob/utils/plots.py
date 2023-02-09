@@ -1,13 +1,12 @@
-import imageio
 import matplotlib.colors as col
 import matplotlib.path
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import matplotlib.transforms
+
 import numpy as np
 from matplotlib.collections import LineCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 
 ### plotting ###
 def cm2inch(*tupl):
@@ -67,7 +66,6 @@ def decorate_ax(
 
     for k, name in enumerate(["left", "right", "top", "bottom"]):
         ax.spines[name].set_visible(spines[k])
-
 
 
 def add_colorbar(
@@ -229,17 +227,6 @@ def render_image(fig):
     return image
 
 
-def generate_gif(images, out_file, fps=10):
-    """
-    Create a gif from an array of images.
-
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    """
-    kwargs_write = {"fps": fps, "quantizer": "nq"}
-    imageio.mimsave(out_file, images, fps=fps)
-
-
 def cmap_arrow(
     ax,
     start,
@@ -276,7 +263,6 @@ def cmap_arrow(
     ax.scatter(
         end[0], end[1], c=1, s=(2 * head_size) ** 2, marker=tri, cmap=cmap, vmin=0
     )
-
 
 
 def plot_dispersion(ax, q_cdf, s_KS, labelx=False, labely=False):
@@ -428,8 +414,7 @@ def plot_circ_posterior(
 
         l = None  # no label for each segment after first
 
-        
-        
+
 # Daft
 def daft_render(pgm):
     """
@@ -445,13 +430,12 @@ def daft_render(pgm):
         pgm._nodes[name].render(pgm._ctx)
 
 
-
 def daft_init_figax(pgm, fig, ax):
     """
     Wrapper for initializing PGM via daft
     """
     pgm._ctx._figure = fig
-    ax.axis('off')
+    ax.axis("off")
 
     # Set the bounds.
     l0 = pgm._ctx.convert(*pgm._ctx.origin)

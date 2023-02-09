@@ -6,15 +6,7 @@
 # models
 
 # helper functions
-from . import (
-    distributions,
-    inference,
-    inputs,
-    kernels,
-    likelihoods,
-    mappings,
-    utils,
-)
+from . import distributions, inference, inputs, kernels, likelihoods, mappings, utils
 
 
 __version__ = "0.1"

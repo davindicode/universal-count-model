@@ -3,10 +3,9 @@ import math
 import torch
 from torch.nn.parameter import Parameter
 
+from ..base import safe_sqrt
+
 from .base import Kernel
-
-from ..utils.signal import safe_sqrt
-
 
 
 # stationary kernels
@@ -38,11 +37,11 @@ class Lengthscale(Kernel):
         if topology == "euclid":
             self.scaled_dist = self._scaled_dist
             self.square_scaled_dist = self._square_scaled_dist
-            
+
         elif topology == "ring":
             self.scaled_dist = self._scaled_dist_ring
             self.square_scaled_dist = self._square_scaled_dist_ring
-            
+
         else:
             raise NotImplementedError("Topology is not supported.")
 
@@ -102,7 +101,6 @@ class Lengthscale(Kernel):
         Returns :math:`\|\frac{X-Z}{l}\|`.
         """
         return safe_sqrt(Lengthscale._square_scaled_dist_ring(lengthscale, X, Z))
-
 
 
 class SquaredExponential(Lengthscale):

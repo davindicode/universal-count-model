@@ -1,7 +1,7 @@
 import torch
-from . import base
 
 from ..base import _data_object
+from . import base
 
 
 def _expand_cov(cov):
@@ -18,7 +18,6 @@ def _expand_cov(cov):
         )
 
     return cov
-
 
 
 ### inputs ###
@@ -55,9 +54,7 @@ class prior_variational_pair(base._VI_object):
         t_lower = batch_edge[b] - offs
         t_upper = batch_edge[b + 1]
 
-        v_samp, nlog_q = self.variational.sample(
-            t_lower, t_upper, offs, samples
-        )
+        v_samp, nlog_q = self.variational.sample(t_lower, t_upper, offs, samples)
         log_p = self.prior.log_p(v_samp, batch_initial[b])
         v_samp_ = v_samp[:, offs:]
 
@@ -65,7 +62,7 @@ class prior_variational_pair(base._VI_object):
             v_samp_ = v_samp_[:, None, :, None]
         else:
             v_samp_ = v_samp_[:, None, ...]
-            
+
         nqlog_pq = -(log_p + nlog_q).mean()  # mean over trials and MC samples
 
         fac = self.tsteps / v_samp_.shape[-2]  # subsampling in batched mode
@@ -89,7 +86,7 @@ class probabilistic_mapping(base._VI_object):
     def constrain(self):
         self.mapping.constrain()
         self.input_group.constrain()
-        
+
     def validate(self, tsteps, trials, batch_info):
         if tsteps != self.input_group.tsteps:
             raise ValueError(
@@ -107,20 +104,20 @@ class probabilistic_mapping(base._VI_object):
         Sample from the posterior of the mapping
         """
         t_, KL_prior = self.input_group.sample_XZ(
-            b, 1,
+            b,
+            1,
         )  # samples, timesteps, dims
         KL_prior = KL_prior + self.mapping.KL_prior()
-        
+
         if self.joint_samples:
             f = self.mapping.sample_F(t_)  # batch, outdims, time
         else:
             f_mu, f_var = self.mapping.compute_F(t_)
             f = f_mu + torch.sqrt(f_var) * torch.randn_like(f_mu)
-        
+
         f = f.permute(0, 2, 1)[:, None, ...]  # batch, neurons, time, d
 
         return f, KL_prior
-
 
 
 # main group
@@ -245,7 +242,7 @@ class input_group(_data_object):
 
             if isinstance(in_, torch.Tensor):  # regressor variable
                 continue
-                
+
             in_.constrain()
 
     def _XZ(self, XZ, samples):
@@ -324,9 +321,7 @@ class input_group(_data_object):
                 continue
 
             ### continuous latent variables ###
-            v_samp, kl_p = in_.sample(
-                b, self.batch_info, samples
-            )
+            v_samp, kl_p = in_.sample(b, self.batch_info, samples)
 
             KL_prior = KL_prior + kl_p
             cov.append(v_samp)

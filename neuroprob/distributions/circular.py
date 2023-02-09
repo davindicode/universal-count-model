@@ -1,14 +1,13 @@
 import math
-from numbers import Number 
+from numbers import Number
 
 import torch
 
 import torch.distributions as dist
 from torch.distributions import constraints
-from torch.distributions.utils import broadcast_all, _standard_normal
+from torch.distributions.utils import _standard_normal, broadcast_all
 
 from .base import TorchDistribution
-
 
 
 class Tn_Normal(TorchDistribution):
@@ -98,7 +97,6 @@ class Tn_Normal(TorchDistribution):
         ent = -self.log_prob(samples).mean(0)
         ent[ent > max_ent] = max_ent
         return ent
-
 
 
 class Tn_Uniform(TorchDistribution):

@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 import sys
-sys.path.append("../../lib")  # access to library
+sys.path.append("../..")  # access to library
 
 from neuroprob import utils
 from neuroprob.likelihoods.discrete import gen_CMP

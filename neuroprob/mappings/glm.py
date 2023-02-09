@@ -58,5 +58,3 @@ class GLM(base._input_mapping):
 
     def sample_F(self, XZ):
         return self.compute_F(XZ)[0]
-
-

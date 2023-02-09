@@ -5,15 +5,13 @@ from numbers import Number
 
 import numpy as np
 import torch
-from torch import nn
 import torch.nn.functional as F
+from torch import nn
 from torch.nn.parameter import Parameter
 
 from tqdm.autonotebook import tqdm
 
 from . import distributions
-from .utils import signal
-
 
 
 # Link functions
@@ -36,6 +34,19 @@ _inv_link_functions = {
 }
 
 
+def safe_sqrt(x, eps=1e-8):
+    """
+    A convenient function to avoid the NaN gradient issue of sqrt() at 0.
+    Ref: https://github.com/pytorch/pytorch/issues/2421
+    """
+    return torch.sqrt(x + eps)
+
+
+def safe_log(x, eps=1e-8):
+    """
+    A convenient function to avoid NaN at small x
+    """
+    return torch.log(x + eps)
 
 
 class _data_object(nn.Module):
@@ -76,5 +87,3 @@ class _data_object(nn.Module):
         batch_initial[0] = True
         batch_edge = list(np.cumsum(np.array([0] + batch_size)))
         self.batch_info = (batch_edge, batch_link, batch_initial)
-
-     

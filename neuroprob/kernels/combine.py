@@ -35,7 +35,6 @@ class Constant(Kernel):
             )  # K, N, T, T
 
 
-
 # kernel combinations
 class Combination(Kernel):
     """
@@ -52,9 +51,7 @@ class Combination(Kernel):
                 "The components of a combined kernel must be " "Kernel instances."
             )
 
-        track_dims = set(kern0.track_dims) | set(
-            kern1.track_dims
-        )
+        track_dims = set(kern0.track_dims) | set(kern1.track_dims)
         track_dims = sorted(track_dims)
         input_dims = max(track_dims) + 1  # cover all dimensions to it
         super().__init__(input_dims)

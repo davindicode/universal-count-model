@@ -49,7 +49,6 @@ class Rn_Uniform(TorchDistribution, dist.Uniform):
         return samples.new_ones(samples.shape[1]) * math.log(self.high - self.low)
 
 
-
 class Delta(TorchDistribution):
     r"""
     Delta distribution
@@ -83,5 +82,3 @@ class Delta(TorchDistribution):
     def entropy(self, samples):
         r""" """
         return samples.new_zeros(*samples.shape[1:])
-
-

@@ -4,7 +4,6 @@ import scipy.signal as signal
 import torch
 
 
-
 # spike train tools
 def bin_data(
     bin_size,

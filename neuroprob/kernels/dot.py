@@ -4,7 +4,6 @@ from torch.nn.parameter import Parameter
 from .base import Kernel
 
 
-
 ### Full kernels
 class DotProduct(Kernel):
     r"""
@@ -91,6 +90,3 @@ class Polynomial(DotProduct):
             bias = self.bias
 
         return (bias + self._dot_product(X, Z, diag)) ** self.degree
-
-
-

@@ -1,14 +1,94 @@
 import numbers
 import types
+
 import numpy as np
 
 import torch
 
-from .. import distributions as dist
-from ..base import _data_object, _link_functions, _inv_link_functions
+from ..base import _data_object, _inv_link_functions, _link_functions
+from ..distributions import Rn_Normal
+
+
 
 _ll_modes = ["MC", "GH"]
 
+
+def mc_gen(q_mu, q_var, samples, neuron):
+    """
+    Diagonal covariance q_var due to separability in time for likelihood
+    Function for generating Gaussian MC samples. No MC samples are drawn when the variance is 0.
+
+    :param torch.Tensor q_mu: the mean of the MC distribution
+    :param torch.Tensor q_var: the (co)variance, type (univariate, multivariate) deduced
+                               from tensor shape
+    :param int samples: number of MC samples
+    :returns: the samples
+    :rtype: torch.tensor
+    """
+    q_mu = q_mu[:, neuron, :]
+    if isinstance(q_var, numbers.Number):  # zero scalar
+        h = (
+            q_mu[None, ...]
+            .expand(samples, *q_mu.shape)
+            .reshape(-1, *q_mu.shape[1:])
+            if samples > 1
+            else q_mu
+        )
+
+    else:  # len(q_var.shape) == 3
+        q_var = q_var[:, neuron, :]
+        if samples == 1:  # no expanding
+            h = Rn_Normal(q_mu, q_var.sqrt())()
+        else:  # shape is (ll_samplesxcov_samples, neurons, time)
+            h = Rn_Normal(q_mu, q_var.sqrt())((samples,)).view(
+                -1, *q_mu.shape[1:]
+            )
+
+    return h
+
+def gh_gen(q_mu, q_var, points, neuron):
+    """
+    Diagonal covariance q_var due to separability in time for likelihood
+    Computes the Gauss-Hermite quadrature locations and weights.
+
+    :param torch.Tensor q_mu: the mean of the MC distribution
+    :param torch.Tensor q_var: the (co)variance, type (univariate, multivariate) deduced
+                               from tensor shape
+    :param int points: number of quadrature points
+    :returns: tuple of locations and weights tensors
+    :rtype: tuple
+    """
+    locs, ws = np.polynomial.hermite.hermgauss(
+        points
+    )  # sample points and weights for quadrature
+    locs = (
+        torch.tensor(locs, dtype=q_mu.dtype)
+        .repeat_interleave(q_mu.shape[0], 0)
+        .to(q_mu.device)
+    )
+    ws = (
+        torch.tensor(
+            1
+            / np.sqrt(np.pi)
+            * ws
+            / q_mu.shape[0],  # q_mu shape 0 is cov_samplesxtrials
+            dtype=q_mu.dtype,
+        )
+        .repeat_interleave(q_mu.shape[0], 0)
+        .to(q_mu.device)
+    )
+
+    q_mu = q_mu[:, neuron, :].repeat(
+        points, 1, 1
+    )  # fill sample dimension with GH quadrature points
+    if isinstance(q_var, numbers.Number) is False:  # not the zero scalar
+        q_var = q_var[:, neuron, :].repeat(points, 1, 1)
+        h = torch.sqrt(2.0 * q_var) * locs[:, None, None] + q_mu
+
+    else:
+        h = q_mu
+
+    return h, ws
 
 
 class _likelihood(_data_object):
@@ -66,7 +146,6 @@ class _likelihood(_data_object):
         self.all_spikes = spikes.type(self.tensor_type)
 
     def KL_prior(self):
-        """ """
         return 0
 
     def constrain(self):
@@ -75,85 +154,10 @@ class _likelihood(_data_object):
         """
         return
 
-    def mc_gen(self, q_mu, q_var, samples, neuron):
-        """
-        Diagonal covariance q_var due to separability in time for likelihood
-        Function for generating Gaussian MC samples. No MC samples are drawn when the variance is 0.
-
-        :param torch.Tensor q_mu: the mean of the MC distribution
-        :param torch.Tensor q_var: the (co)variance, type (univariate, multivariate) deduced
-                                   from tensor shape
-        :param int samples: number of MC samples
-        :returns: the samples
-        :rtype: torch.tensor
-        """
-        q_mu = q_mu[:, neuron, :]
-        if isinstance(q_var, numbers.Number):  # zero scalar
-            h = (
-                q_mu[None, ...]
-                .expand(samples, *q_mu.shape)
-                .reshape(-1, *q_mu.shape[1:])
-                if samples > 1
-                else q_mu
-            )
-
-        else:  # len(q_var.shape) == 3
-            q_var = q_var[:, neuron, :]
-            if samples == 1:  # no expanding
-                h = dist.Rn_Normal(q_mu, q_var.sqrt())()
-            else:  # shape is (ll_samplesxcov_samples, neurons, time)
-                h = dist.Rn_Normal(q_mu, q_var.sqrt())((samples,)).view(
-                    -1, *q_mu.shape[1:]
-                )
-
-        return h
-
-    def gh_gen(self, q_mu, q_var, points, neuron):
-        """
-        Diagonal covariance q_var due to separability in time for likelihood
-        Computes the Gauss-Hermite quadrature locations and weights.
-
-        :param torch.Tensor q_mu: the mean of the MC distribution
-        :param torch.Tensor q_var: the (co)variance, type (univariate, multivariate) deduced
-                                   from tensor shape
-        :param int points: number of quadrature points
-        :returns: tuple of locations and weights tensors
-        :rtype: tuple
-        """
-        locs, ws = np.polynomial.hermite.hermgauss(
-            points
-        )  # sample points and weights for quadrature
-        locs = (
-            torch.tensor(locs, dtype=self.tensor_type)
-            .repeat_interleave(q_mu.shape[0], 0)
-            .to(self.tbin.device)
-        )
-        ws = (
-            torch.tensor(
-                1
-                / np.sqrt(np.pi)
-                * ws
-                / q_mu.shape[0],  # q_mu shape 0 is cov_samplesxtrials
-                dtype=self.tensor_type,
-            )
-            .repeat_interleave(q_mu.shape[0], 0)
-            .to(self.tbin.device)
-        )
-
-        q_mu = q_mu[:, neuron, :].repeat(
-            points, 1, 1
-        )  # fill sample dimension with GH quadrature points
-        if isinstance(q_var, numbers.Number) is False:  # not the zero scalar
-            q_var = q_var[:, neuron, :].repeat(points, 1, 1)
-            h = torch.sqrt(2.0 * q_var) * locs[:, None, None] + q_mu
-
-        else:
-            h = q_mu
-
-        return h, ws
-
     def _validate_neuron(self, neuron):
-        """ """
+        """
+        Check if accessed neurons are within valid array bounds
+        """
         if neuron is None:
             neuron = np.arange(
                 self.neurons
@@ -163,15 +167,6 @@ class _likelihood(_data_object):
                 "Accessing output dimensions beyond specified dimensions by model"
             )  # avoid illegal access
         return neuron
-
-    def sample_rate(self, F_mu, F_var, trials, MC_samples=1):
-        """
-        returns: rate of shape (MC, trials, neurons, time)
-        """
-        with torch.no_grad():
-            h = self.mc_gen(F_mu, F_var, MC_samples, list(range(F_mu.shape[1])))
-            rate = self.f(h.view(-1, trials, *h.shape[1:]))
-        return rate
 
     def nll(self, inner, inner_var, b, neuron):
         raise NotImplementedError

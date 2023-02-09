@@ -5,6 +5,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 from .. import distributions as dist
+
 from . import base
 
 
@@ -34,7 +35,7 @@ class Gaussian(base._likelihood):
             dh = self.dispersion_mapping.sample_F(XZ, samples, neuron)[:, neuron, :]
         else:
             disp, disp_var = self.dispersion_mapping.compute_F(XZ)
-            dh = self.mc_gen(disp, disp_var, samples, neuron)
+            dh = base.mc_gen(disp, disp_var, samples, neuron)
         return self.dispersion_mapping_f(dh).mean(
             0
         )  # watch out for underflow or overflow here
@@ -106,11 +107,11 @@ class Gaussian(base._likelihood):
         # elif self.inv_link == 'exp' # exact
 
         if mode == "MC":
-            h = self.mc_gen(F_mu, F_var, samples, neuron)
+            h = base.mc_gen(F_mu, F_var, samples, neuron)
             rates, spikes = self.sample_helper(h, b, neuron, samples)
             ws = torch.tensor(1.0 / rates.shape[0])
         elif mode == "GH":
-            h, ws = self.gh_gen(F_mu, F_var, samples, neuron)
+            h, ws = base.gh_gen(F_mu, F_var, samples, neuron)
             rates, spikes = self.sample_helper(h, b, neuron, samples)
             ws = ws[:, None]
         else:
@@ -124,7 +125,7 @@ class Gaussian(base._likelihood):
         """
         if rng is None:
             rng = np.random.default_rng()
-            
+
         neuron = self._validate_neuron(neuron)
         rate_ = rate[:, neuron, :]
 
