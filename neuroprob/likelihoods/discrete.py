@@ -24,7 +24,7 @@ def gen_ZIP(rng, lamb, alpha):
 
 
 def gen_NB(rng, lamb, r):
-    s = np.random.gamma(
+    s = rng.gamma(
         r, lamb / r
     )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
     return rng.poisson(s)

@@ -9,34 +9,30 @@ import scipy.special as sps
 import scipy.stats as scstats
 import numpy as np
 
-import sys
-
-
+import pickle
 
 import os
 if not os.path.exists('./saves'):
     os.makedirs('./saves')
     
+    
+import sys
+
 sys.path.append("..") # access to library
-
-import neuroprob as mdl
+import neuroprob as nprb
 from neuroprob import utils
-from neuroprob import GP
-
-
-dev = utils.pytorch.get_device(gpu=0)
 
 sys.path.append("../scripts") # access to scripts
+import models
 
-import template
-import fit_model
-
-import pickle
+dev = utils.pytorch.get_device(gpu=0)
     
     
+    
+
 data_path = '../data/'
-data_type = 'IP'
-bin_size = 40
+data_type = 'modIP1'
+bin_size = 1
 
 dataset_dict = models.get_dataset(data_type, bin_size, data_path)
 
@@ -294,11 +290,11 @@ for a in range(len(R[0])):
     
     
 correlations_dict = {
-    R, 
-    Rp, 
-    R_mat_Xp, 
-    R_mat_X, 
-    R_mat_XZ, 
+    'R': R, 
+    'Rp': Rp, 
+    'R_mat_Xp': R_mat_Xp, 
+    'R_mat_X': R_mat_X, 
+    'R_mat_XZ': R_mat_XZ, 
 }
 
 
@@ -310,4 +306,4 @@ data_run = {
     'latent': latent_dict
 }
 
-pickle.dump(data_run, open('./saves/IP_results.p', 'wb'))
+pickle.dump(data_run, open('./saves/modIP_results.p', 'wb'))

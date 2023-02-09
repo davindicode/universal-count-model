@@ -37,7 +37,7 @@ def posterior_rate(
     """
     cov = mapping.to_XZ(covariates, trials)
     if mapping.MC_only:
-        samples = mapping.sample_F(cov)[:, F_dims, :]  # TODO: cov_samples vs ll_samples?
+        samples = mapping.sample_F(cov)[:, F_dims, :]
         
     else:
         F_mu, F_var = mapping.compute_F(cov)
@@ -94,7 +94,7 @@ def compute_UCM_P_count(mapping, likelihood, covariates, show_neuron, MC=1000, t
     F_dims = likelihood._neuron_to_F(show_neuron)
     with torch.no_grad():
         h = sample_F(
-            mapping, likelihood, covariates, MC, F_dims, trials=trials
+            mapping, covariates, MC, F_dims, trials=trials
         )
         logp = likelihood.get_logp(h, show_neuron)  # samples, N, time, K
 

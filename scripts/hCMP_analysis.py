@@ -1,7 +1,37 @@
+import torch
+import torch.nn as nn
+from torch.nn.parameter import Parameter
+import torch.nn.functional as F
+import torch.optim as optim
+
+
+import scipy.special as sps
+import scipy.stats as scstats
+import numpy as np
+
+import pickle
+
+import os
+if not os.path.exists('./saves'):
+    os.makedirs('./saves')
+    
+    
+import sys
+
+sys.path.append("..") # access to library
+import neuroprob as nprb
+from neuroprob import utils
+
+sys.path.append("../scripts") # access to scripts
+import models
+
+dev = utils.pytorch.get_device(gpu=0)
+
+
 
 
 data_path = '../data/'
-data_type = 'modIP1'
+data_type = 'hCMP1'
 bin_size = 1
 
 dataset_dict = models.get_dataset(data_type, bin_size, data_path)
@@ -376,6 +406,7 @@ latent_dict = {
 
 # export
 data_run = {
+    'regression': regression_dict,
     'dispersion': dispersion_dict, 
     'latent': latent_dict
 }

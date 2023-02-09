@@ -71,11 +71,15 @@ class prior_variational_pair(base._VI_object):
 
 class probabilistic_mapping(base._VI_object):
     """
-    Takes in an _input_mapping object
+    A stochastic mapping layer
     """
 
     def __init__(self, input_group, mapping, joint_samples=False):
-        """ """
+        """
+        The input_group and mapping form an input-output pair for the stochastic map.
+        This component can be used to build the input_group to another mapping, allowing 
+        one to build hierarchical models as deep Gaussian processes.
+        """
         super().__init__(mapping.out_dims, mapping.tensor_type)
         if mapping.tensor_type != input_group.tensor_type:
             raise ValueError("Mapping and input group tensor types do not match")

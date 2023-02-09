@@ -12,7 +12,7 @@ def percentiles_from_samples(
     samples, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
 ):
     """
-    Compute quantile intervals from samples, samples has shape (sample_dim, event_dims..., T).
+    Compute quantile intervals from samples, samples has shape (sample_dim, event_dims..., ts).
 
     :param torch.tensor samples: input samples of shape (MC, event_dims...)
     :param list percentiles: list of percentile values to look at
@@ -21,12 +21,12 @@ def percentiles_from_samples(
     :rtype: list
     """
     num_samples = samples.size(0)
-    T = samples.size(-1)
+    ts = samples.size(-1)
     prev_shape = samples.shape[1:]
     if len(samples.shape) == 2:
         samples = samples[:, None, :]
     else:
-        samples = samples.view(num_samples, -1, T)
+        samples = samples.view(num_samples, -1, ts)
 
     samples = samples.sort(dim=0)[0]
     percentile_samples = [
@@ -53,29 +53,9 @@ def percentiles_from_samples(
 
 
 # count statistics
-def gamma_count_prob(n, rate, shape, sim_time):
-    """
-    Evaluate count data against the Gamma renewal process count distribution:
-
-    .. math:: p(n) = .
-
-    :param numpy.array alpha: Probabilities of the discrete target distribution. The
-        shape of the array dimensions is (samples, index) with index size :math:`n`.
-    :returns: Samples from the Gumbel-softmax indexed from :math:`0` to :math:`n-1`
-    :rtype: numpy.array
-    """
-    g = rate * sim_time
-    if g == 0:  # will get Gamma(0)*0 which is ~0/0 so manually set to 1
-        return (n == 0).astype(float)
-
-    return sps.gammainc(shape * n, g) - sps.gammainc(shape * (n + 1), g)
-
-
-def poiss_count_prob(n, rate, dummy, sim_time):
+def poiss_count_prob(n, rate, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
-
-    .. math:: p(n) = .
 
     :param numpy.array alpha: Probabilities of the discrete target distribution. The
         shape of the array dimensions is (samples, index) with index size :math:`n`.
@@ -86,15 +66,6 @@ def poiss_count_prob(n, rate, dummy, sim_time):
     if g == 0:
         return (n == 0).astype(float)
 
-    # if g == 0:
-    #    return float(n == 0)
-    # if n > 10: # Stirling asymptotic series
-    #    l_f = np.log(g) + 1 - np.log(n) # log e*g/n
-    #    if l_f < 1e-20/n: # super small
-    #        return 0.0
-    #    return np.exp(n*l_f - g) / np.sqrt(2*np.pi*n)
-    # else:
-
     return np.exp(
         n * np.log(g) - g - sps.gammaln(n + 1)
     )  # / sps.factorial(n) # scipy.special.factorial computes array! efficiently
@@ -103,8 +74,6 @@ def poiss_count_prob(n, rate, dummy, sim_time):
 def zip_count_prob(n, rate, alpha, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
-
-    .. math:: p(n) = .
 
     :param numpy.array alpha: Probabilities of the discrete target distribution. The
         shape of the array dimensions is (samples, index) with index size :math:`n`.
@@ -131,7 +100,7 @@ def nb_count_prob(n, rate, r_inv, sim_time):
     if g == 0:
         return (n == 0).astype(float)
 
-    asymptotic_mask = r_inv < 1e-3
+    asymptotic_mask = (r_inv < 1e-3)
     r = 1.0 / (r_inv + asymptotic_mask)
 
     base_terms = np.log(g) * n - sps.gammaln(n + 1)
@@ -140,8 +109,8 @@ def nb_count_prob(n, rate, r_inv, sim_time):
     )
     ll_r = base_terms + log_terms
     ll_r_inv = base_terms - g - np.log(1.0 + r_inv * (n**2 + 1.0 - n * (3 / 2 + g)))
-
-    ll = ll_r * (1.0 - asymptotic_mask) + ll_r_inv * asymptotic_mask
+    
+    ll = ll_r_inv if asymptotic_mask else ll_r
     return np.exp(ll)
 
 

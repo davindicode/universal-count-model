@@ -136,7 +136,7 @@ def compute_count_stats(
 
     if type(likelihood) == nprb.likelihoods.Poisson:
         shape_model = None
-        f_p = lambda c, avg, shape, t: utils.stats.poiss_count_prob(c, avg, shape, t)
+        f_p = lambda c, avg, shape, t: utils.stats.poiss_count_prob(c, avg, t)
 
     elif type(likelihood) == nprb.likelihoods.Negative_binomial:
         shape_model = (
