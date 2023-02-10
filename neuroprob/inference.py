@@ -222,20 +222,20 @@ class VI_optimized(nn.Module):
 
     ### optimization ###
     def set_optimizers(
-        self, optim_tuple, opt_lr_dict, special_grads=[], extra_update_args=None
+        self, optimizer, scheduler, scheduler_interval, opt_lr_dict, special_grads=[], extra_update_args=None
     ):
         """
         Set the optimizers and the optimization hyperparameters.
 
-        :param tuple optim_tuple: tuple containing PyTorch (optimizer, schedule_steps, lr_scheduler)
+        :param torch.Optimizer optimizer: PyTorch optimizer
+        :param _LRScheduler scheduler: Learning rate scheduler
         :param dict opt_lr_dict: is a dictionary with parameter name and lr, needs to supply 'default': lr
         :param list special_grads: list of tuples ([parameter_names,...], lr, optim_step_function)
         :param tuple extra_update_args: tuple of update function and args
         """
-        opt, self.sch_st, sch = optim_tuple
         assert "default" in opt_lr_dict  # default learning rate
 
-        if opt == optim.LBFGS:  # special case
+        if optimizer == optim.LBFGS:  # special case
             d = []
             for param in self.parameters():
                 # special gradient treatment
@@ -248,7 +248,7 @@ class VI_optimized(nn.Module):
             history_size = opt_lr_dict["history"] if "history" in opt_lr_dict else 10
             max_iter = opt_lr_dict["max_iter"] if "max_iter" in opt_lr_dict else 4
 
-            self.optim_base = opt(
+            self.optim_base = optimizer(
                 d,
                 lr=opt_lr_dict["default"],
                 history_size=history_size,
@@ -279,9 +279,12 @@ class VI_optimized(nn.Module):
 
                 d.append(opt_dict)
 
-            self.optim_base = opt(d, lr=opt_lr_dict["default"])
-        self.sch = sch(self.optim_base)
-
+            self.optim_base = optimizer(d, lr=opt_lr_dict["default"])
+        
+        # scheduler if any
+        self.sch = scheduler(self.optim_base) if scheduler is not None else None
+        self.sch_st = scheduler_interval
+        
         # special gradient treatment
         pd = dict(self.named_parameters())
 
@@ -392,7 +395,7 @@ class VI_optimized(nn.Module):
                     raise ValueError("Loss diverged")
                 sloss += loss.item()
 
-            if self.sch_st is not None and epoch % self.sch_st == self.sch_st - 1:
+            if self.sch_st > 0 and epoch % self.sch_st == self.sch_st - 1:
                 self.sch.step()
 
             sloss /= batches  # average over batches, each batch loss is subsampled estimator of full loss

@@ -10,58 +10,45 @@ from . import base
 
 
 # linear algebra computations
-def eye_like(value, m, n=None):
+def eye_like(value, m):
     """
-    Create an identity tensor, from Pyro [1].
-
-    References:
-
-    [1] `Pyro: Deep Universal Probabilistic Programming`, E. Bingham et al. (2018)
-
+    Create an identity tensor with tensor properties of value
     """
-    if n is None:
-        n = m
-    eye = torch.zeros(m, n, dtype=value.dtype, device=value.device)
-    eye.view(-1)[: min(m, n) * n : n + 1] = 1
+    eye = torch.zeros(m, m, dtype=value.dtype, device=value.device)
+    eye.view(-1)[: m**2 : m + 1] = 1
     return eye
 
 
 def p_F_U(
     X,
     X_u,
-    kernelobj,
-    f_loc,
-    f_scale_tril,
+    kernel,
+    u_loc,
+    u_scale_tril,
     full_cov=False,
     compute_cov=True,
     whiten=False,
     jitter=1e-6,
 ):
-    r"""
-    Computed Gaussian conditional distirbution.
+    """
+    Computes Gaussian conditional distirbution.
 
-    :param int out_dims: number of output dimensions
     :param torch.Tensor X: Input data to evaluate the posterior over
     :param torch.Tensor X_u: Input data to conditioned on, inducing points in sparse GP
     :param GP.kernels.Kernel kernel: A kernel module object
-    :param torch.Tensor f_loc: Mean of :math:`q(f)`. In case ``f_scale_tril=None``,
-        :math:`f_{loc} = f`
-    :param torch.Tensor f_scale_tril: Lower triangular decomposition of covariance
-        matrix of :math:`q(f)`'s
-    :param torch.Tensor Lff: Lower triangular decomposition of :math:`kernel(X, X)`
-        (optional)
-    :param string cov_type: A flag to decide what form of covariance to compute
-    :param bool whiten: A flag to tell if ``f_loc`` and ``f_scale_tril`` are
-        already transformed by the inverse of ``Lff``
-    :param float jitter: A small positive term which is added into the diagonal part of
-        a covariance matrix to help stablize its Cholesky decomposition
+    :param torch.Tensor u_loc: mean of variational MVN distribution
+    :param torch.Tensor u_scale_tril: lower triangular cholesky of covariance of variational MVN distribution
+    :param bool full_cov: return the posterior covariance matrix or not
+    :param bool compute_cov: compute the posterior covariance matrix or not
+    :param bool whiten: whether to apply the whitening transform 
+    :param float jitter: size of small positive diagonal matrix to help stablize Cholesky decompositions
     :return:
-        loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
+        loc and covariance matrix (or variance vector)
     """
     N_u = X_u.size(-2)  # number of inducing, inducing points
     T = X.size(2)  # timesteps from KxNxTxD
     K = X.size(0)
-    out_dims = f_loc.shape[0]
+    out_dims = u_loc.shape[0]
 
     Kff = kernelobj(X_u[None, ...])[0, ...].contiguous()
     Kff.data.view(Kff.shape[0], -1)[:, :: N_u + 1] += jitter  # add jitter to diagonal
@@ -73,41 +60,41 @@ def p_F_U(
     Kfs = Kfs.permute(1, 2, 0, 3).reshape(N_l, N_u, -1)  # N, N_u, KxT
 
     if N_l == 1:  # single lengthscale for all outputs
-        # convert f_loc_shape from N, N_u to 1, N_u, N
-        f_loc = f_loc.permute(-1, 0)[None, ...]
+        # convert u_loc_shape from N, N_u to 1, N_u, N
+        u_loc = u_loc.permute(-1, 0)[None, ...]
 
-        # f_scale_tril N, N_u, N_u
-        if f_scale_tril is not None:
-            # convert f_scale_tril_shape from N, N_u, N_u to N_u, N_u, N, convert to 1 x 2D tensor for packing
-            f_scale_tril = f_scale_tril.permute(-2, -1, 0).reshape(1, N_u, -1)
+        # u_scale_tril N, N_u, N_u
+        if u_scale_tril is not None:
+            # convert u_scale_tril_shape from N, N_u, N_u to N_u, N_u, N, convert to 1 x 2D tensor for packing
+            u_scale_tril = u_scale_tril.permute(-2, -1, 0).reshape(1, N_u, -1)
 
     else:  # multi-lengthscale
-        # convert f_loc_shape to N, N_u, 1
-        f_loc = f_loc[..., None]
-        # f_scale_tril N, N_u, N_u
+        # convert u_loc_shape to N, N_u, 1
+        u_loc = u_loc[..., None]
+        # u_scale_tril N, N_u, N_u
 
     if whiten:
-        v_4D = f_loc[None, ...].repeat(K, 1, 1, 1)  # K, N, N_u, N_
+        v_4D = u_loc[None, ...].repeat(K, 1, 1, 1)  # K, N, N_u, N_
         W = torch.linalg.solve_triangular(Lff, Kfs, upper=False)
         W = W.view(N_l, N_u, K, T).permute(2, 0, 3, 1)  # K, N, T, N_u
-        if f_scale_tril is not None:
-            S_4D = f_scale_tril[None, ...].repeat(K, 1, 1, 1)
+        if u_scale_tril is not None:
+            S_4D = u_scale_tril[None, ...].repeat(K, 1, 1, 1)
 
     else:
-        pack = torch.cat((f_loc, Kfs), dim=-1)  # N, N_u, L
-        if f_scale_tril is not None:
-            pack = torch.cat((pack, f_scale_tril), dim=-1)
+        pack = torch.cat((u_loc, Kfs), dim=-1)  # N, N_u, L
+        if u_scale_tril is not None:
+            pack = torch.cat((pack, u_scale_tril), dim=-1)
 
         Lffinv_pack = torch.linalg.solve_triangular(Lff, pack, upper=False)
-        v_4D = Lffinv_pack[None, :, :, : f_loc.size(-1)].repeat(
+        v_4D = Lffinv_pack[None, :, :, : u_loc.size(-1)].repeat(
             K, 1, 1, 1
         )  # K, N, N_u, N_
-        if f_scale_tril is not None:
-            S_4D = Lffinv_pack[None, :, :, -f_scale_tril.size(-1) :].repeat(
+        if u_scale_tril is not None:
+            S_4D = Lffinv_pack[None, :, :, -u_scale_tril.size(-1) :].repeat(
                 K, 1, 1, 1
             )  # K, N, N_u, N_u or N_xN_u
 
-        W = Lffinv_pack[:, :, f_loc.size(-1) : f_loc.size(-1) + K * T]
+        W = Lffinv_pack[:, :, u_loc.size(-1) : u_loc.size(-1) + K * T]
         W = W.view(N_l, N_u, K, T).permute(2, 0, 3, 1)  # K, N, T, N_u
 
     if N_l == 1:
@@ -128,7 +115,7 @@ def p_F_U(
         # due to numerical errors, clamp to avoid negative values
         cov = (Kssdiag - Qssdiag).clamp(min=0)  # K, N, T
 
-    if f_scale_tril is not None:
+    if u_scale_tril is not None:
         W_S = W.matmul(S_4D)  # K, N, T, N_xN_u
         if N_l == 1:
             W_S = W_S.view(K, 1, T, N_u, out_dims).permute(0, 4, 2, 3, 1)[..., 0]
@@ -149,12 +136,14 @@ class inducing_points(nn.Module):
     Class to hold inducing points
     """
 
-    def __init__(self, out_dims, inducing_points, MAP=False, tensor_type=torch.float):
+    def __init__(self, out_dims, inducing_points, MAP=False, tensor_type=torch.float, jitter=1e-6):
         """
         :param list constraints: list of tupes (dl, du, topo) where dl:du dimensions are constrained on topology topo
         """
         super().__init__()
         self.tensor_type = tensor_type
+        self.jitter = jitter
+        
         self.Xu = Parameter(inducing_points.type(tensor_type))
         _, self.n_ind, self.input_dims = self.Xu.shape
 
@@ -177,13 +166,19 @@ class inducing_points(nn.Module):
             self.u_scale_tril.data = torch.tril(self.u_scale_tril.data)
             Nu = self.n_ind
             self.u_scale_tril.data[:, range(Nu), range(Nu)] = torch.clamp(
-                self.u_scale_tril.data[:, range(Nu), range(Nu)], min=1e-12
+                self.u_scale_tril.data[:, range(Nu), range(Nu)], min=self.jitter
             )
 
 
 class SVGP(base._input_mapping):
     """
     Sparse Variational Gaussian Process model with covariates for regression and latent variables.
+    
+    We will use a variational approach in this model by approximating :math:`q(f,u)`
+    to the posterior :math:`p(f,u \mid y)`. Precisely, :math:`q(f) = p(f\mid u)q(u)`,
+    where :math:`q(u)` is a multivariate normal distribution with two parameters
+    ``u_loc`` and ``u_scale_tril``, which will be learned during a variational
+    inference process.
     """
 
     def __init__(
@@ -196,32 +191,12 @@ class SVGP(base._input_mapping):
         learn_mean=False,
         MAP=False,
         whiten=False,
-        kernel_regression=False,
+        compute_post_covar=False,
         tensor_type=torch.float,
         jitter=1e-6,
         active_dims=None,
     ):
-        r"""
-        Specify the kernel type with corresponding dimensions and arguments.
-        
-        .. math::
-            [f, u] &\sim \mathcal{GP}(0, k([X, X_u], [X, X_u])),\\
-            y & \sim p(y) = p(y \mid f) p(f),
-
-        where :math:`p(y \mid f)` is the likelihood.
-
-        We will use a variational approach in this model by approximating :math:`q(f,u)`
-        to the posterior :math:`p(f,u \mid y)`. Precisely, :math:`q(f) = p(f\mid u)q(u)`,
-        where :math:`q(u)` is a multivariate normal distribution with two parameters
-        ``u_loc`` and ``u_scale_tril``, which will be learned during a variational
-        inference process.
-
-        The sparse model has :math:`\mathcal{O}(NM^2)` complexity for training,
-        :math:`\mathcal{O}(M^3)` complexity for testing. Here, :math:`N` is the number
-        of train inputs, :math:`M` is the number of inducing inputs. Size of
-        variational parameters is :math:`\mathcal{O}(M^2)`.
-        
-        
+        """
         :param int out_dims: number of output dimensions of the GP, usually neurons
         :param nn.Module inducing_points: initial inducing points with shape (neurons, n_induc, input_dims)
         :param Kernel kernel: a tuple listing kernels, with content 
@@ -233,7 +208,7 @@ class SVGP(base._input_mapping):
 
         self.jitter = jitter
         self.whiten = whiten
-        self.kernel_regression = kernel_regression
+        self.compute_post_covar = compute_post_covar  # False if doing kernel regression
 
         ### GP mean ###
         if isinstance(mean, Number):
@@ -324,31 +299,12 @@ class SVGP(base._input_mapping):
 
     def compute_F(self, XZ):
         """
-        Computes moments of marginals :math:`q(f_i|\bm{u})` and also updating :math:`L_{uu}` matrix
-        model call uses :math:`L_{uu}` for the MVN, call after this function
+        Computes moments of the posterior marginals and updating the cholesky matrix 
+        for the covariance over inducing point locations.
 
-        Computes the mean and covariance matrix (or variance) of Gaussian Process
-        posterior on a test input data :math:`X_{new}`:
-
-        .. math:: p(f^* \mid X_{new}, X, y, k, X_u, u_{loc}, u_{scale\_tril})
-            = \mathcal{N}(loc, cov).
-
-        .. note:: Variational parameters ``u_loc``, ``u_scale_tril``, the
-            inducing-point parameter ``Xu``, together with kernel's parameters have
-            been learned.
-
-        covariance_type is a flag to decide if we want to predict full covariance matrix or
-        just variance.
-
-        .. note:: The GP is centered around zero with fixed zero mean, but a learnable
-            mean is added after computing the posterior to get the mapping mean.
-
-        XZ # K, N, T, D
-        X_u = self.Xu[None, ...] # K, N, T, D
-
-        :param X: input regressors with shape (samples, timesteps, dims)
+        :param XZ: input covariates with shape (samples, neurons, timesteps, dims)
         :return:
-            loc and covariance matrix (or variance) of :math:`p(f^*(X_{new}))`
+            mean and diagonal covariance of the posterior
         """
         XZ = self._XZ(XZ)
         loc, var, self.Luu = p_F_U(
@@ -357,7 +313,7 @@ class SVGP(base._input_mapping):
             self.kernel,
             self.induc_pts.u_loc,
             self.induc_pts.u_scale_tril,
-            compute_cov=~self.kernel_regression,
+            compute_cov=self.compute_post_covar,
             full_cov=False,
             whiten=self.whiten,
             jitter=self.jitter,
@@ -367,7 +323,11 @@ class SVGP(base._input_mapping):
 
     def sample_F(self, XZ, samples=1, eps=None):
         """
-        Samples from the variational posterior :math:`q(\bm{f}_*|\bm{u})`, which can be the predictive distribution
+        Samples from the predictive distribution (posterior over evaluation points)
+        
+        :param XZ: evaluation input covariates with shape (samples, neurons, timesteps, dims)
+        :return:
+            joint samples of the posterior (samples, neurons, ts)
         """
         XZ = self._XZ(XZ)
 

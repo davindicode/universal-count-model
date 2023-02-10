@@ -227,7 +227,7 @@ def metric(x, y, topology="euclid"):
         xy = 2 * (1 - torch.cos(x - y))
     else:
         raise NotImplementedError
-    # xy[xy < 0] = -xy[xy < 0] # abs
+        
     return xy
 
 

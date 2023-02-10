@@ -704,7 +704,7 @@ def standard_parser(usage, description):
     parser.set_defaults(cpu=False)
     
     parser.add_argument("--batch_size", default=10000, type=int)
-    parser.add_argument("--cv", nargs="+", type=int)
+    parser.add_argument("--cv", nargs="+", type=int)  # if -1, fit to all data
     parser.add_argument("--cv_folds", default=5, type=int)
     parser.add_argument("--bin_size", type=int)
 
@@ -720,9 +720,9 @@ def standard_parser(usage, description):
     parser.add_argument("--lr_2", default=1e-3, type=float)
 
     parser.add_argument("--scheduler_factor", default=0.9, type=float)
-    parser.add_argument("--scheduler_interval", default=100, type=int)
-    parser.add_argument("--loss_margin", default=-1e0, type=float)
-    parser.add_argument("--margin_epochs", default=100, type=int)
+    parser.add_argument("--scheduler_interval", default=100, type=int)  # if 0, no scheduler applied
+    parser.add_argument("--loss_margin", default=-1e0, type=float)  # minimum loss increase
+    parser.add_argument("--margin_epochs", default=100, type=int)  # epochs over which this must happen 
 
     parser.add_argument("--likelihood", action="store", type=str)
     parser.add_argument("--mapping", default="", action="store", type=str)
@@ -983,8 +983,9 @@ def train_model(dev, parser_args, dataset_dict):
                 sch = lambda o: optim.lr_scheduler.MultiplicativeLR(
                     o, lambda e: parser_args.scheduler_factor
                 )
-                opt_tuple = (optim.Adam, parser_args.scheduler_interval, sch)
                 opt_lr_dict = {"default": parser_args.lr}
+                
+                # set learning rates for special cases
                 if z_mode == "T1":
                     opt_lr_dict["mapping.kernel.kern1._lengthscale"] = parser_args.lr_2
                 for z_dim in full_model.input_group.latent_dims:
@@ -992,14 +993,14 @@ def train_model(dev, parser_args, dataset_dict):
                         "input_group.input_{}.variational.finv_std".format(z_dim)
                     ] = parser_args.lr_2
 
-                full_model.set_optimizers(opt_tuple, opt_lr_dict)
+                full_model.set_optimizers(
+                    optim.Adam, sch, parser_args.scheduler_interval, opt_lr_dict)
 
-                annealing = lambda x: 1.0
                 losses = full_model.fit(
                     parser_args.max_epochs,
                     loss_margin=parser_args.loss_margin,
                     margin_epochs=parser_args.margin_epochs,
-                    kl_anneal_func=annealing,
+                    kl_anneal_func=lambda x: 1.0,  # no KL annealing
                     cov_samples=parser_args.cov_MC,
                     ll_samples=parser_args.ll_MC,
                     ll_mode=parser_args.integral_mode,

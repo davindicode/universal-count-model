@@ -20,12 +20,12 @@ import sys
 
 sys.path.append("..") # access to library
 import neuroprob as nprb
-from neuroprob import utils
 
 sys.path.append("../scripts") # access to scripts
 import models
+import 
 
-dev = utils.pytorch.get_device(gpu=0)
+dev = nprb.utils.pytorch.get_device(gpu=0)
 
 
 
@@ -46,9 +46,6 @@ covariates = [rhd_t[None, :, None].repeat(trials, axis=0),
               ra_t[None, :, None].repeat(trials, axis=0)]
 
 
-# modes = [('GP', 'IP', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), 
-#          ('GP', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'),
-#          ('GP', 'U', 'hdxR1', 16, 'identity', 3, [1], False, 10, False, 'ew')]
 checkpoint_dir = '../scripts/checkpoint/'
 config_name = 'th1_U-el-4_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f-1'
 batch_info = 500
@@ -89,19 +86,42 @@ covariates = [rhd_t[None, :, None].repeat(trials, axis=0)]
 # cross-validation of regression models
 beta = 0.0
 kcvs = [2, 5, 8] # validation sets chosen in 10-fold split of data
-batch_size = 5000
+batch_info = 5000  # batch size for cross-validation
 
-Ms = modes[:4]
+
+config_names = [
+    'hCMP1_IP-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+    'hCMP1_hNB-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+    'hCMP1_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+    'hCMP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f', 
+]
+
+
+
 RG_cv_ll = []
-for mode in Ms:
-    for cvdata in model_utils.get_cv_sets(mode, kcvs, batch_size, rc_t, resamples, rcov):
-        _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
-        cv_set = (ftrain, fcov, vtrain, vcov)
-        
-        full_model = get_full_model(datatype, cvdata, resamples, rc_t, 100, 
-                                    mode, rcov, max_count, neurons)
-        RG_cv_ll.append(model_utils.RG_pred_ll(full_model, mode[2], models.cov_used, cv_set, bound='ELBO', 
-                                               beta=beta, neuron_group=None, ll_mode='GH', ll_samples=100))
+for name in config_names:
+    for kcv in kcvs:
+        config_name = name + str(kcv)
+    
+        full_model, training_loss, fit_dict, val_dict = models.load_model(
+            config_name,
+            checkpoint_dir,
+            dataset_dict,
+            batch_info,
+            device,
+        )
+
+        RG_cv_ll.append(
+            models.RG_pred_ll(
+                full_model,
+                val_dict,
+                neuron_group=None,
+                ll_mode="GH",
+                ll_samples=100,
+                cov_samples=1,
+                beta=0.0,
+            )
+        )
     
 RG_cv_ll = np.array(RG_cv_ll).reshape(len(Ms), len(kcvs))
 
@@ -118,7 +138,7 @@ full_model = get_full_model(datatype, cvdata, resamples, rc_t, 100,
 
 steps = 100
 covariates = [np.linspace(0, 2*np.pi, steps)]
-P_mc = model_utils.compute_P(full_model, covariates, use_neuron, MC=1000)
+P_mc = nprb.utils.model.compute_UCM_P_count(full_model, covariates, use_neuron, MC=1000)
 P_rg = P_mc.mean(0).cpu().numpy()
 
 x_counts = torch.arange(max_count+1)
@@ -292,8 +312,8 @@ for mode in Modes:
     for rn in CV:
         eval_range = np.arange(cvT//cvK) + rn*cvT//cvK
 
-        _, shift, sign, _, _ = utils.latent.signed_scaled_shift(lat[eval_range], tar_t[eval_range], 
-                                                                topology=topology, dev=dev, learn_scale=False)
+        _, shift, sign, _, _ = utils.signed_scaled_shift(lat[eval_range], tar_t[eval_range], 
+                                                         topology=topology, dev=dev, learn_scale=False)
         
         mask = np.ones((cvT,), dtype=bool)
         mask[eval_range] = False
