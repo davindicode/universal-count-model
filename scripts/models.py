@@ -18,8 +18,6 @@ from neuroprob import kernels, utils
 from neuroprob.mappings.base import _input_mapping
 
 
-
-
 ### data ###
 def get_dataset(data_type, bin_size, path):
 
@@ -73,7 +71,7 @@ def get_dataset(data_type, bin_size, path):
         metainfo = {
             "neuron_regions": neuron_regions,
         }
-        
+
     else:  # synthetic
         assert bin_size == 1
         syn_data = np.load(path + data_type + ".npz")
@@ -89,7 +87,7 @@ def get_dataset(data_type, bin_size, path):
 
         rc_t = syn_data["spktrain"]
         tbin = syn_data["tbin"].item()
-        
+
         units_used, resamples = rc_t.shape
 
     name = data_type
@@ -128,14 +126,23 @@ class Siren(nn.Module):
     def forward(self, input):
         return torch.sin(input)
 
-    
-    
+
 class FFNN(_input_mapping):
     """
     Artificial neural network rate model.
     """
-    def __init__(self, input_dim, angle_dims, out_dims, layers, nonlin=Siren, tensor_type=torch.float, 
-                 active_dims=None, bias=True):
+
+    def __init__(
+        self,
+        input_dim,
+        angle_dims,
+        out_dims,
+        layers,
+        nonlin=Siren,
+        tensor_type=torch.float,
+        active_dims=None,
+        bias=True,
+    ):
         """
         :param nn.Module mu_ANN: ANN parameterizing the mean function mapping
         :param nn.Module sigma_ANN: ANN paramterizing the standard deviation mapping if stochastic
@@ -143,7 +150,7 @@ class FFNN(_input_mapping):
         super().__init__(input_dim, out_dims, tensor_type, active_dims)
         euclid_dims = input_dim - angle_dims
         self.angle_dims = angle_dims
-        
+
         in_dims = 2 * angle_dims + euclid_dims
         net = nn.ModuleList([])
         if len(layers) == 0:
@@ -156,37 +163,33 @@ class FFNN(_input_mapping):
                 net.append(nonlin())
                 # net.append(nn.BatchNorm1d())
             net.append(nn.Linear(layers[-1:][0], out_dims, bias=bias))
-        
-        self.add_module('net', nn.Sequential(*net))
-        
-        
+
+        self.add_module("net", nn.Sequential(*net))
+
     def compute_F(self, XZ):
         """
         The input to the ANN will be of shape (samples*timesteps, dims).
-        
+
         :param torch.Tensor cov: covariates with shape (samples, timesteps, dims)
         :returns: inner product with shape (samples, neurons, timesteps)
         :rtype: torch.tensor
         """
         XZ = self._XZ(XZ)
         incov = XZ.view(-1, XZ.shape[-1])
-        
+
         embed = torch.cat(
             (
-                torch.cos(incov[:, :self.angle_dims]),
-                torch.sin(incov[:, :self.angle_dims]),
-                incov[:, self.angle_dims:],
+                torch.cos(incov[:, : self.angle_dims]),
+                torch.sin(incov[:, : self.angle_dims]),
+                incov[:, self.angle_dims :],
             ),
             dim=-1,
         )
         mu = self.net(embed).view(*XZ.shape[:2], -1).permute(0, 2, 1)
         return mu, 0
 
-    
     def sample_F(self, XZ):
         self.compute_F(XZ)[0]
-
-        
 
 
 def enc_used(model_dict, covariates, learn_mean):
@@ -283,7 +286,10 @@ def enc_used(model_dict, covariates, learn_mean):
         Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
         inpd = Xu.shape[-1]
         inducing_points = nprb.mappings.inducing_points(
-            out_dims, Xu, tensor_type=tensor_type
+            out_dims,
+            Xu,
+            jitter=jitter,
+            tensor_type=tensor_type,
         )
 
         mapping = nprb.mappings.SVGP(
@@ -300,17 +306,17 @@ def enc_used(model_dict, covariates, learn_mean):
 
     elif map_mode_comps[0] == "ffnn":  # feedforward neural network mapping
         angle_dims = 0
-        
+
         for xc in x_mode_comps:
-            
+
             if xc == "hd" or xc == "omega":
                 angle_dims += 1
-            
+
         for zc in x_mode_comps:
             if zc[:1] == "T":
                 dz = int(zc[1:])
                 angle_dims += dz
-                
+
         enc_layers = [int(ls) for ls in map_mode_comps[1:]]
         mapping = FFNN(
             in_dims, angle_dims, out_dims, enc_layers, tensor_type=torch.float
@@ -320,8 +326,6 @@ def enc_used(model_dict, covariates, learn_mean):
         raise ValueError
 
     return mapping
-
-
 
 
 ### GP ###
@@ -596,16 +600,16 @@ def get_likelihood(model_dict, cov, enc_used):
 
     if ll_mode_comps[0] == "U":
         inv_link = "identity"
-        
+
     elif ll_mode == "IBP":
         inv_link = lambda x: torch.sigmoid(x) / tbin
-        
+
     elif ll_mode_comps[-1] == "exp":
         inv_link = "exp"
-        
+
     elif ll_mode_comps[-1] == "spl":
         inv_link = "softplus"
-        
+
     else:
         raise ValueError("Likelihood inverse link function not defined")
 
@@ -649,7 +653,7 @@ def get_likelihood(model_dict, cov, enc_used):
         )
 
     elif ll_mode_comps[0] == "hCMP":
-        J = int(ll_mode[4:])
+        J = int(ll_mode_comps[1])
         likelihood = nprb.likelihoods.hCOM_Poisson(
             tbin, inner_dims, inv_link, hgp, J=J, tensor_type=tensor_type
         )
@@ -669,9 +673,7 @@ def get_likelihood(model_dict, cov, enc_used):
 def gen_name(model_dict, delay, fold):
     delaystr = "".join(str(d) for d in model_dict["delays"])
 
-    name = model_dict[
-        "model_name"
-    ] + "_{}_{}_X[{}]_Z[{}]_{}K{}_{}d{}_{}f{}".format(
+    name = model_dict["model_name"] + "_{}_{}_X[{}]_Z[{}]_{}K{}_{}d{}_{}f{}".format(
         model_dict["ll_mode"],
         model_dict["map_mode"],
         model_dict["x_mode"],
@@ -702,7 +704,7 @@ def standard_parser(usage, description):
     parser.add_argument("--tensor_type", default="float", action="store", type=str)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
-    
+
     parser.add_argument("--batch_size", default=10000, type=int)
     parser.add_argument("--cv", nargs="+", type=int)  # if -1, fit to all data
     parser.add_argument("--cv_folds", default=5, type=int)
@@ -720,9 +722,15 @@ def standard_parser(usage, description):
     parser.add_argument("--lr_2", default=1e-3, type=float)
 
     parser.add_argument("--scheduler_factor", default=0.9, type=float)
-    parser.add_argument("--scheduler_interval", default=100, type=int)  # if 0, no scheduler applied
-    parser.add_argument("--loss_margin", default=-1e0, type=float)  # minimum loss increase
-    parser.add_argument("--margin_epochs", default=100, type=int)  # epochs over which this must happen 
+    parser.add_argument(
+        "--scheduler_interval", default=100, type=int
+    )  # if 0, no scheduler applied
+    parser.add_argument(
+        "--loss_margin", default=-1e0, type=float
+    )  # minimum loss increase
+    parser.add_argument(
+        "--margin_epochs", default=100, type=int
+    )  # epochs over which this must happen
 
     parser.add_argument("--likelihood", action="store", type=str)
     parser.add_argument("--mapping", default="", action="store", type=str)
@@ -732,9 +740,7 @@ def standard_parser(usage, description):
     return parser
 
 
-def preprocess_data(
-    dataset_dict, folds, delays, cv_runs, batchsize, has_latent=False
-):
+def preprocess_data(dataset_dict, folds, delays, cv_runs, batchsize, has_latent=False):
     """
     Returns delay shifted cross-validated data for training
     rcov list of arrays of shape (neurons, time, 1)
@@ -769,7 +775,7 @@ def preprocess_data(
         D_min = 0
         D_max = 0
         dd = [0]
-        
+
     D = -D_max + D_min  # total delay steps - 1
     for delay in dd:
 
@@ -857,7 +863,7 @@ def setup_model(data_dict, model_dict, enc_used):
     spktrain = data_dict["spiketrain"]
     cov = data_dict["covariates"]
     batch_info = data_dict["batch_info"]
-    
+
     neurons, timesamples = spktrain.shape[0], spktrain.shape[-1]
 
     ll_mode, map_mode, x_mode, z_mode, tensor_type = (
@@ -887,7 +893,7 @@ def setup_model(data_dict, model_dict, enc_used):
         neurons * C
     )  # number of output dimensions of the input_mapping
 
-    learn_mean = (ll_mode_comps[0] != "U")
+    learn_mean = ll_mode_comps[0] != "U"
     mapping = enc_used(model_dict, cov, learn_mean)
 
     # likelihood
@@ -984,7 +990,7 @@ def train_model(dev, parser_args, dataset_dict):
                     o, lambda e: parser_args.scheduler_factor
                 )
                 opt_lr_dict = {"default": parser_args.lr}
-                
+
                 # set learning rates for special cases
                 if z_mode == "T1":
                     opt_lr_dict["mapping.kernel.kern1._lengthscale"] = parser_args.lr_2
@@ -994,7 +1000,8 @@ def train_model(dev, parser_args, dataset_dict):
                     ] = parser_args.lr_2
 
                 full_model.set_optimizers(
-                    optim.Adam, sch, parser_args.scheduler_interval, opt_lr_dict)
+                    optim.Adam, sch, parser_args.scheduler_interval, opt_lr_dict
+                )
 
                 losses = full_model.fit(
                     parser_args.max_epochs,
@@ -1019,17 +1026,17 @@ def train_model(dev, parser_args, dataset_dict):
                 if losses[-1] < lowest_loss:
                     if not os.path.exists(checkpoint_dir):
                         os.makedirs(checkpoint_dir)
-                    
+
                     # save model
                     torch.save(
                         {
-                            "full_model": full_model.state_dict(), 
+                            "full_model": full_model.state_dict(),
                             "training_loss": losses,
                             "seed": seed,
                             "delay": cvdata["delay"],
                             "cv_run": cvdata["fold"],
                             "config": parser_args,
-                        }, 
+                        },
                         checkpoint_dir + model_name + ".pt",
                     )
 
@@ -1047,10 +1054,8 @@ def load_model(
     """
     Load the model with cross-validated data structure
     """
-    checkpoint = torch.load(
-        checkpoint_dir + config_name + ".pt", map_location=device
-    )
-        
+    checkpoint = torch.load(checkpoint_dir + config_name + ".pt", map_location=device)
+
     delay, cv_run = checkpoint["delay"], checkpoint["cv_run"]
     config = checkpoint["config"]
     model_dict = extract_model_dict(config, dataset_dict)
@@ -1090,15 +1095,14 @@ def load_model(
         "covariates": inputs_used(model_dict, cvdata["covariates_val"], batch_info)[0]
         if cvdata["covariates_val"] is not None
         else None,
-        "spiketrain": torch.from_numpy(cvdata["spiketrain_val"]) 
+        "spiketrain": torch.from_numpy(cvdata["spiketrain_val"])
         if cvdata["spiketrain_val"] is not None
         else None,
         "batch_info": cvdata["batching_info_val"],
     }
     training_loss = checkpoint["training_loss"]
-    
-    return full_model, training_loss, fit_dict, val_dict
 
+    return full_model, training_loss, fit_dict, val_dict
 
 
 ### cross validation ###
@@ -1117,9 +1121,9 @@ def RG_pred_ll(
     vtrain = val_dict["spiketrain"]
     vcov = val_dict["covariates"]
     vbatch_info = val_dict["batch_info"]
-    
+
     time_steps = vtrain.shape[-1]
-    #print("Data segment timesteps: {}".format(time_steps))
+    # print("Data segment timesteps: {}".format(time_steps))
 
     model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
     model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
@@ -1163,9 +1167,9 @@ def LVM_pred_ll(
     vtrain = val_dict["spiketrain"]
     vcov = val_dict["covariates"]
     vbatch_info = val_dict["batch_info"]
-    
+
     time_steps = vtrain.shape[-1]
-    #print("Data segment timesteps: {}".format(time_steps))
+    # print("Data segment timesteps: {}".format(time_steps))
 
     model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
     model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
@@ -1210,8 +1214,6 @@ def LVM_pred_ll(
     return np.array(pll).mean(), losses  # mean over each subsampled estimate
 
 
-
-
 ### main ###
 def main():
     parser = standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
@@ -1221,14 +1223,12 @@ def main():
     args = parser.parse_args()
 
     if args.cpu:
-        dev = 'cpu'
+        dev = "cpu"
     else:
         dev = nprb.inference.get_device(gpu=args.gpu)
-        
-    dataset_dict = get_dataset(
-        args.data_type, args.bin_size, args.data_path
-    )
-    
+
+    dataset_dict = get_dataset(args.data_type, args.bin_size, args.data_path)
+
     train_model(dev, args, dataset_dict)
 
 

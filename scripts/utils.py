@@ -10,7 +10,6 @@ import neuroprob as nprb
 from neuroprob import utils
 
 
-
 ### UCM ###
 def marginalized_P(
     full_model, eval_points, eval_dims, rcov, bs, use_neuron, MC=100, skip=1
@@ -56,7 +55,6 @@ def marginalized_P(
         P_tot[..., e, :] = P_.mean(-2)
 
     return P_tot
-
 
 
 ### stats ###
@@ -207,7 +205,6 @@ def compute_count_stats(
     return q_
 
 
-
 # metrics
 def metric(x, y, topology="euclid"):
     """
@@ -220,20 +217,20 @@ def metric(x, y, topology="euclid"):
     """
     if topology == "euclid":
         xy = x - y
-    elif topology == "torus":
+    elif topology == "ring":
         xy = (x - y) % (2 * np.pi)
         xy[xy > np.pi] -= 2 * np.pi
-    elif topology == "circ":
+    elif topology == "cosine":
         xy = 2 * (1 - torch.cos(x - y))
     else:
         raise NotImplementedError
-        
+
     return xy
 
 
 # align latent
 def signed_scaled_shift(
-    x, x_ref, dev="cpu", topology="torus", iters=1000, lr=1e-2, learn_scale=True
+    x, x_ref, dev="cpu", topology="ring", iters=1000, lr=1e-2, learn_scale=True
 ):
     """
     Shift trajectory, with scaling, reflection and translation.

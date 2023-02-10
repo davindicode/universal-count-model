@@ -50,11 +50,11 @@ def p_F_U(
     K = X.size(0)
     out_dims = u_loc.shape[0]
 
-    Kff = kernelobj(X_u[None, ...])[0, ...].contiguous()
+    Kff = kernel(X_u[None, ...])[0, ...].contiguous()
     Kff.data.view(Kff.shape[0], -1)[:, :: N_u + 1] += jitter  # add jitter to diagonal
     Lff = torch.linalg.cholesky(Kff)  # N, N_u, N_u
 
-    Kfs = kernelobj(X_u[None, ...], X)  # K, N, N_u, T
+    Kfs = kernel(X_u[None, ...], X)  # K, N, N_u, T
 
     N_l = Kfs.shape[1]
     Kfs = Kfs.permute(1, 2, 0, 3).reshape(N_l, N_u, -1)  # N, N_u, KxT
@@ -106,11 +106,11 @@ def p_F_U(
         return loc, 0, Lff
 
     if full_cov:
-        Kss = kernelobj(X)
+        Kss = kernel(X)
         Qss = W.matmul(W.transpose(-2, -1))
         cov = Kss - Qss  # K, N, T, T
     else:
-        Kssdiag = kernelobj(X, diag=True)
+        Kssdiag = kernel(X, diag=True)
         Qssdiag = W.pow(2).sum(dim=-1)
         # due to numerical errors, clamp to avoid negative values
         cov = (Kssdiag - Qssdiag).clamp(min=0)  # K, N, T
@@ -138,7 +138,8 @@ class inducing_points(nn.Module):
 
     def __init__(self, out_dims, inducing_points, MAP=False, tensor_type=torch.float, jitter=1e-6):
         """
-        :param list constraints: list of tupes (dl, du, topo) where dl:du dimensions are constrained on topology topo
+        :param int out_dims: number of output dimensions
+        :param inducing_points: inducing point locations (out_dims, N_induc, dims)
         """
         super().__init__()
         self.tensor_type = tensor_type
@@ -173,12 +174,7 @@ class inducing_points(nn.Module):
 class SVGP(base._input_mapping):
     """
     Sparse Variational Gaussian Process model with covariates for regression and latent variables.
-    
-    We will use a variational approach in this model by approximating :math:`q(f,u)`
-    to the posterior :math:`p(f,u \mid y)`. Precisely, :math:`q(f) = p(f\mid u)q(u)`,
-    where :math:`q(u)` is a multivariate normal distribution with two parameters
-    ``u_loc`` and ``u_scale_tril``, which will be learned during a variational
-    inference process.
+    Uses the variational approach following (Titsias 2009) and (Hensman et al. 2013)
     """
 
     def __init__(
@@ -191,7 +187,7 @@ class SVGP(base._input_mapping):
         learn_mean=False,
         MAP=False,
         whiten=False,
-        compute_post_covar=False,
+        compute_post_covar=True,
         tensor_type=torch.float,
         jitter=1e-6,
         active_dims=None,

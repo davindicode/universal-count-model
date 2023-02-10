@@ -14,8 +14,8 @@ def get_device(gpu=0):
     Enable PyTorch with CUDA if available.
 
     :param int gpu: device number for CUDA
-    :returns: device name for CUDA
-    :rtype: string
+    :returns:
+        device name string for CUDA gpu
     """
     print("PyTorch version: %s" % torch.__version__)
     dev = (

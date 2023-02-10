@@ -100,7 +100,7 @@ def nb_count_prob(n, rate, r_inv, sim_time):
     if g == 0:
         return (n == 0).astype(float)
 
-    asymptotic_mask = (r_inv < 1e-3)
+    asymptotic_mask = (r_inv < 1e-4)
     r = 1.0 / (r_inv + asymptotic_mask)
 
     base_terms = np.log(g) * n - sps.gammaln(n + 1)

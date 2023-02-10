@@ -24,6 +24,7 @@ def gen_ZIP(rng, lamb, alpha):
 
 
 def gen_NB(rng, lamb, r):
+    r = np.minimum(r, 1e12)
     s = rng.gamma(
         r, lamb / r
     )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
@@ -668,19 +669,19 @@ class ZI_Poisson(_count_model):
 
     def nll(self, b, rates, n_l_rates, spikes, neuron, disper_param=None):
         if disper_param is None:
-            alpha_ = self.alpha.expand(1, self.neurons)[:, neuron, None]
+            alpha = self.alpha.expand(1, self.neurons)[:, neuron, None]
         else:
-            alpha_ = disper_param
+            alpha = disper_param
 
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         T = rates * self.tbin
         zero_spikes = spikes == 0  # mask
-        nll_ = (
-            -n_l_rates + T - tfact + lfact - safe_log(1.0 - alpha_)
+        nll = (
+            -n_l_rates + T - tfact + lfact - safe_log(1.0 - alpha)
         )  # -log (1-alpha)*p(N)
-        p = torch.exp(-nll_)  # stable as nll > 0
-        nll_0 = -safe_log(alpha_ + p)
-        nll = zero_spikes * nll_0 + (~zero_spikes) * nll_
+        p = torch.exp(-nll)  # stable as nll > 0
+        nll_0 = -safe_log(alpha + p)
+        nll = zero_spikes * nll_0 + (~zero_spikes) * nll
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -695,24 +696,24 @@ class ZI_Poisson(_count_model):
             rng = np.random.default_rng()
 
         neuron = self._validate_neuron(neuron)
-        rate_ = rate[:, neuron, :]
+        rate = rate[:, neuron, :]
 
         if self.dispersion_mapping is None:
-            alpha_ = (
+            alpha = (
                 self.alpha[None, :, None]
-                .expand(rate.shape[0], self.neurons, rate_.shape[-1])
+                .expand(rate.shape[0], self.neurons, rate.shape[-1])
                 .data.cpu()
                 .numpy()[:, neuron, :]
             )
         else:
             with torch.no_grad():
-                alpha_ = (
+                alpha = (
                     self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
                     .cpu()
                     .numpy()
                 )
 
-        return gen_ZIP(rng, rate_ * self.tbin.item(), alpha_)
+        return gen_ZIP(rng, rate * self.tbin.item(), alpha)
 
 
 class hZI_Poisson(ZI_Poisson):
@@ -765,7 +766,7 @@ class Negative_binomial(_count_model):
         if self.r_inv is not None:
             self.r_inv.data = torch.clamp(
                 self.r_inv.data, min=0.0
-            )  # effective r_inv > 1e-6 stabilized in NLL
+            )
 
     def get_saved_factors(self, b, neuron, spikes):
         """
@@ -789,13 +790,13 @@ class Negative_binomial(_count_model):
         the dispersion parameter rather than its own dispersion parameters.
 
         .. math::
-            P(n|\lambda, r) = \frac{\lambda^n}{n!} \frac{\Gamma(r+n)}{\Gamma(r) \, (r+\lamba)^n} \left( 1 + \frac{\lambda}{r} \right)^{-r}
+            P(n|\lambda, r) = \frac{\lambda^n}{n!} \frac{\Gamma(r+n)}{\Gamma(r) \, (r+\lamba)^n} 
+                \left( 1 + \frac{\lambda}{r} \right)^{-r}
 
         where the mean is related to the conventional parameter :math:`\lambda = \frac{pr}{1-p}`
-
-        For :math:`r \to \infty` we compute the likelihood as a correction to Poisson retaining :math:`\log{1 + O(r^{-1})}`.
-        We parameterize the likelihood with :math:`r^{-1}`, as this allows one to reach the Poisson limit (:math:`r^{-1} \to 0`)
-        using the series expansion.
+        
+        We parameterize the likelihood with :math:`r^{-1}`, with the Poisson limit (:math:`r^{-1} \to 0`)
+        using a Taylor series expansion in :math:`r^{-1}` retaining :math:`\log{1 + O(r^{-1})}`.
 
         :param int b: batch index to evaluate
         :param torch.Tensor rates: rates of shape (trial, neuron, time)
@@ -804,32 +805,32 @@ class Negative_binomial(_count_model):
         :param list neuron: list of neuron indices to evaluate
         :param torch.Tensor disper_param: input for heteroscedastic NB likelihood of shape (trial, neuron, time),
                                           otherwise uses fixed :math:`r_{inv}`
-        :returns: NLL of shape (trial, time)
-        :rtype: torch.tensor
+        :returns:
+            NLL of shape (trial, time)
         """
         if disper_param is None:
             disper_param = self.r_inv.expand(1, self.neurons)[:, neuron, None]
-
+        r_inv = disper_param
+        
         # when r becomes very large, parameterization in r becomes numerically unstable
-        asymptotic_mask = disper_param < 1e-3
-        r_ = 1.0 / (disper_param + asymptotic_mask)
-        r_inv_ = disper_param  # use 1/r parameterization
+        asymptotic_mask = (r_inv < 1e-4)  # use Taylor expansion in 1/r
+        r = 1.0 / (r_inv + asymptotic_mask)  # add mask not using r_
+        r= torch.clamp(r, min=1000.)  # avoid r too small
 
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         lambd = rates * self.tbin
-        fac_lgamma = -torch.lgamma(r_ + spikes) + torch.lgamma(r_)
-        fac_power = (spikes + r_) * safe_log(r_ + lambd) - r_ * safe_log(r_)
+        fac_lgamma = -torch.lgamma(spikes + r) + torch.lgamma(r)
+        fac_power = (spikes + r) * safe_log(r + lambd) - r * safe_log(r)
 
         nll_r = fac_power + fac_lgamma
         nll_r_inv = lambd + torch.log(
-            1.0 + r_inv_ * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
-        )
+            1.0 + r_inv * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
+        )  # Taylor expansion in 1/r
 
         nll = -n_l_rates - tfact + lfact
         asymptotic_mask = asymptotic_mask.expand(*nll.shape)
         nll[asymptotic_mask] = nll[asymptotic_mask] + nll_r_inv[asymptotic_mask]
         nll[~asymptotic_mask] = nll[~asymptotic_mask] + nll_r[~asymptotic_mask]
-        # nll = nll_r*(~asymptotic_mask) + nll_r_inv*asymptotic_mask
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -845,14 +846,14 @@ class Negative_binomial(_count_model):
             rng = np.random.default_rng()
 
         neuron = self._validate_neuron(neuron)
-        rate_ = rate[:, neuron, :]
+        rate = rate[:, neuron, :]
 
         if self.dispersion_mapping is None:
-            r_ = (
+            r = (
                 1.0
                 / (
                     self.r_inv[None, :, None]
-                    .expand(rate.shape[0], self.neurons, rate_.shape[-1])
+                    .expand(rate.shape[0], self.neurons, rate.shape[-1])
                     .data.cpu()
                     .numpy()
                     + 1e-12
@@ -861,10 +862,10 @@ class Negative_binomial(_count_model):
         else:
             samples = rate.shape[0]
             with torch.no_grad():
-                disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
-            r_ = 1.0 / (disp.cpu().numpy() + 1e-12)
+                r_inv = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
+            r = 1.0 / (r_inv.cpu().numpy() + 1e-12)
 
-        return gen_NB(rng, rate_ * self.tbin.item(), r_)
+        return gen_NB(rng, rate * self.tbin.item(), r)
 
 
 class hNegative_binomial(Negative_binomial):
@@ -883,7 +884,7 @@ class hNegative_binomial(Negative_binomial):
     ):
         super().__init__(tbin, neurons, inv_link, None, tensor_type, strict_likelihood)
         self.dispersion_mapping = dispersion_mapping
-        self.dispersion_mapping_f = torch.nn.functional.softplus
+        self.dispersion_mapping_f = torch.exp
 
     def constrain(self):
         self.dispersion_mapping.constrain()
@@ -969,16 +970,16 @@ class COM_Poisson(_count_model):
         :rtype: torch.tensor
         """
         if disper_param is None:
-            nu_ = torch.exp(self.log_nu).expand(1, self.neurons)[:, neuron, None]
+            nu = torch.exp(self.log_nu).expand(1, self.neurons)[:, neuron, None]
         else:
-            nu_ = torch.exp(disper_param)  # nn.functional.softplus
+            nu = torch.exp(disper_param)  # nn.functional.softplus
 
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         log_lambda = safe_log(rates * self.tbin + 1e-12)
 
-        l_Z = self.log_Z(log_lambda, nu_)
+        l_Z = self.log_Z(log_lambda, nu)
 
-        nll = -n_l_rates + l_Z - tfact + nu_ * lfact
+        nll = -n_l_rates + l_Z - tfact + nu * lfact
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -993,12 +994,12 @@ class COM_Poisson(_count_model):
             rng = np.random.default_rng()
 
         neuron = self._validate_neuron(neuron)
-        lamb_ = rate[:, neuron, :] * self.tbin.item()
+        lambd = rate[:, neuron, :] * self.tbin.item()
 
         if self.dispersion_mapping is None:
-            nu_ = (
+            nu = (
                 torch.exp(self.log_nu)[None, :, None]
-                .expand(rate.shape[0], self.neurons, lamb_.shape[-1])
+                .expand(rate.shape[0], self.neurons, lambd.shape[-1])
                 .data.cpu()
                 .numpy()[:, neuron, :]
             )
@@ -1006,10 +1007,10 @@ class COM_Poisson(_count_model):
         else:
             samples = rate.shape[0]
             with torch.no_grad():
-                disp = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
-            nu_ = torch.exp(disp).cpu().numpy()
+                log_nu = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
+            nu = torch.exp(log_nu).cpu().numpy()
 
-        return gen_CMP(rng, lamb_, nu_)
+        return gen_CMP(rng, lambd, nu)
 
 
 class hCOM_Poisson(COM_Poisson):
@@ -1031,7 +1032,7 @@ class hCOM_Poisson(COM_Poisson):
             tbin, neurons, inv_link, None, tensor_type, J, strict_likelihood
         )
         self.dispersion_mapping = dispersion_mapping
-        self.dispersion_mapping_f = lambda x: x
+        self.dispersion_mapping_f = lambda x: x  # modeling log nu
 
     def constrain(self):
         self.dispersion_mapping.constrain()
