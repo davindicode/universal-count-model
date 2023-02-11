@@ -28,7 +28,7 @@ def sample_F(mapping, covariates, MC, F_dims, trials=1, eps=None):
 
 
 def posterior_rate(
-    mapping, inv_link, covariates, MC, F_dims, trials=1, percentiles=[0.05, 0.5, 0.95]
+    mapping, inv_link, covariates, MC, F_dims, trials=1, percentiles=[0.05, 0.5, 0.95], smooth_length=1
 ):
     """
     Sample F from diagonalized variational posterior.
@@ -45,7 +45,7 @@ def posterior_rate(
             samples = mc_gen(F_mu[:, F_dims, :], F_var[:, F_dims, :], MC, list(range(len(F_dims))))
         
     samples = inv_link(samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples)
-    return percentiles_from_samples(samples, percentiles)
+    return percentiles_from_samples(samples, percentiles, smooth_length=smooth_length)
 
 
 def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):

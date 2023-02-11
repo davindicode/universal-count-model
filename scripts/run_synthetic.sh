@@ -36,3 +36,8 @@ python3 models.py --data_type hCMP --checkpoint_dir ./checkpoint/ --data_path ..
 # analysis
 python3 hCMP_analysis.py
 python3 modIP_analysis.py
+
+
+# plots
+python3 schematic_plots.py
+python3 synthetic_plots.py

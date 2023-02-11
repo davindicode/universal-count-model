@@ -1,3 +1,17 @@
+import numpy as np
+import pickle
+
+import torch
+
+import matplotlib.pyplot as plt
+
+import os
+    
+import sys
+sys.path.append("..")
+from neuroprob import utils
+
+
 def regressors(fig):
     widths = [1]
     heights = [1]
@@ -362,3 +376,44 @@ def latent_delay(fig):
     ax.set_yticklabels([r'$0$', r'$2\pi$'])
     ax.set_ylabel(r'$z$', labelpad=-4, fontsize=10)
     ax.set_xlabel('head direction', labelpad=0, fontsize=10)
+    
+    
+    
+def main():
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+    plt.style.use(['paper.mplstyle'])
+    
+    # load
+    
+    # plot
+    fig = plt.figure(figsize=(8, 4))
+    fig.text(-0.08, 1.02, 'A', transform=fig.transFigure, size=15, fontweight='bold')
+    fig.text(0.29, 1.02, 'B', transform=fig.transFigure, size=15, fontweight='bold')
+    fig.text(-0.08, 0.35, 'C', transform=fig.transFigure, size=15, fontweight='bold')
+    fig.text(0.475, 0.35, 'D', transform=fig.transFigure, size=15, fontweight='bold')
+
+
+    poscol = 'forestgreen'
+    antcol = 'orange'
+
+    show_neuron = [11, 26]
+
+
+    regressors(fig)
+    bin_sizes(fig)
+
+
+    ATIs(fig)
+    population_drift(fig)
+
+    latent_variables_scores(fig)
+    latent_posterior(fig)
+    latent_delay(fig)
+
+    plt.savefig('output/plot_hdc_add.pdf')
+    
+    
+    
+if __name__ == "__main__":
+    main()

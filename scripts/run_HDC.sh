@@ -68,3 +68,8 @@ python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../
 python3 th_regression.py
 python3 th_noise_correlations.py
 python3 th_latent_variable.py
+
+
+# plots
+python3 th1_analysis_plots.py
+python3 th1_additional_plots.py

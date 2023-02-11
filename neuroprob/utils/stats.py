@@ -9,12 +9,12 @@ import torch.nn as nn
 
 
 def percentiles_from_samples(
-    samples, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
+    samples, percentiles=[0.05, 0.5, 0.95], smooth_length=1, padding_mode="replicate"
 ):
     """
-    Compute quantile intervals from samples, samples has shape (sample_dim, event_dims..., ts).
+    Compute quantile intervals from samples
 
-    :param torch.tensor samples: input samples of shape (MC, event_dims...)
+    :param torch.tensor samples: input samples of shape (MC, [event_dims...], ts)
     :param list percentiles: list of percentile values to look at
     :param int smooth_length: time steps over which to smooth with uniform block
     :returns: list of tensors representing percentile boundaries
@@ -23,32 +23,38 @@ def percentiles_from_samples(
     num_samples = samples.size(0)
     ts = samples.size(-1)
     prev_shape = samples.shape[1:]
+    
     if len(samples.shape) == 2:
         samples = samples[:, None, :]
     else:
         samples = samples.view(num_samples, -1, ts)
 
-    samples = samples.sort(dim=0)[0]
+    samples = samples.sort(dim=0)[0]  # sort for percentiles
     percentile_samples = [
         samples[int(num_samples * percentile)] for percentile in percentiles
     ]
 
-    with torch.no_grad():  # Smooth the samples
-        Conv1D = nn.Conv1d(
-            1,
-            1,
-            smooth_length,
-            padding=smooth_length // 2,
-            bias=False,
-            padding_mode=padding_mode,
-        ).to(samples.device)
-        Conv1D.weight.fill_(1.0 / smooth_length)
-        percentiles_samples = [
-            Conv1D(percentile_sample[:, None, :]).view(prev_shape)
-            for percentile_sample in percentile_samples
+    if smooth_length > 1:  # smooth the samples
+        with torch.no_grad():
+            Conv1D = nn.Conv1d(
+                1,
+                1,
+                smooth_length,
+                padding=smooth_length // 2,
+                bias=False,
+                padding_mode=padding_mode,
+            ).to(samples.device)
+            Conv1D.weight.fill_(1.0 / smooth_length)
+            percentile_samples = [
+                Conv1D(p[:, None, :]).view(prev_shape) for p in percentile_samples
+            ]
+            
+    else:  # reshape
+        percentile_samples = [
+            p.view(prev_shape) for p in percentile_samples
         ]
 
-    return percentiles_samples
+    return percentile_samples
 
 
 

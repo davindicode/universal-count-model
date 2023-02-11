@@ -101,6 +101,7 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
     return Y
 
 
+# count distributions
 class _count_model(base._likelihood):
     """
     Count likelihood base class.
@@ -211,288 +212,7 @@ class _count_model(base._likelihood):
         return self.nll(b, rates, n_l_rates, spikes, neuron, disper_param), ws
 
 
-# Special cases
-class Parallel_Linear(nn.Module):
-    """
-    Linear layers that separate different operations in one dimension.
-    """
 
-    __constants__ = ["in_features", "out_features", "channels"]
-    in_features: int
-    out_features: int
-    weight: torch.Tensor
-
-    def __init__(
-        self, in_features: int, out_features: int, channels: int, bias: bool = True
-    ) -> None:
-        """
-        If channels is 1, then we share all the weights over the channel dimension.
-        """
-        super(Parallel_Linear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.channels = channels
-        self.weight = Parameter(torch.randn(channels, out_features, in_features))
-        if bias:
-            self.bias = Parameter(torch.randn(channels, out_features))
-        else:
-            self.register_parameter("bias", None)
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(self.bias, -bound, bound)
-
-    def forward(self, input: torch.Tensor, channels: list) -> torch.Tensor:
-        """
-        :param torch.tensor input: input of shape (batch, channels, in_dims)
-        """
-        W = self.weight[None, channels, ...]
-        B = 0 if self.bias is None else self.bias[None, channels, :]
-
-        return (W * input[..., None, :]).sum(-1) + B
-
-    def extra_repr(self) -> str:
-        return "in_features={}, out_features={}, channels={}, bias={}".format(
-            self.in_features, self.out_features, self.channels, self.bias is not None
-        )
-
-
-class Universal(base._likelihood):
-    """
-    Universal count distribution with finite cutoff at max_count.
-
-    """
-
-    def __init__(
-        self, neurons, C, basis_mode, inv_link, max_count, tensor_type=torch.float
-    ):
-        super().__init__(1.0, neurons * C, neurons, inv_link, tensor_type)  # dummy tbin
-        self.K = max_count
-        self.C = C
-        self.neurons = neurons
-        self.lsoftm = torch.nn.LogSoftmax(dim=-1)
-
-        self.basis = self.get_basis(basis_mode)
-        expand_C = torch.cat(
-            [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
-        ).shape[
-            -1
-        ]  # size of expanded vector
-
-        mapping_net = Parallel_Linear(
-            expand_C, (max_count + 1), neurons
-        )  # single linear mapping
-        self.add_module("mapping_net", mapping_net)  # maps from NxC to NxK
-
-    def set_Y(self, spikes, batch_info):
-        """
-        Get all the activity into batches useable format for fast log-likelihood evaluation.
-        Batched spikes will be a list of tensors of shape (trials, neurons, time) with trials
-        set to 1 if input has no trial dimension (e.g. continuous recording).
-
-        :param np.ndarray spikes: becomes a list of [neuron_dim, batch_dim]
-        :param int/list batch_size:
-        :param int filter_len: history length of the GLM couplings (1 indicates no history coupling)
-        """
-        if self.K < spikes.max():
-            raise ValueError("Maximum count is exceeded in the spike count data")
-        super().set_Y(spikes, batch_info)
-
-    def onehot_to_counts(self, onehot):
-        """
-        Convert one-hot vector representation of counts. Assumes the event dimension is the last.
-
-        :param torch.Tensor onehot: one-hot vector representation of shape (..., event)
-        :returns: spike counts
-        :rtype: torch.tensor
-        """
-        counts = torch.zeros(*onehot.shape[:-1], device=onehot.device)
-        inds = torch.where(onehot)
-        counts[inds[:-1]] = inds[-1].float()
-        return counts
-
-    def counts_to_onehot(self, counts):
-        """
-        Convert counts to one-hot vector representation. Adds the event dimension at the end.
-
-        :param torch.Tensor counts: spike counts of some tensor shape
-        :param int max_counts: size of the event dimension (max_counts + 1)
-        :returns: one-hot representation of shape (*counts.shape, event)
-        :rtype: torch.tensor
-        """
-        km = self.K + 1
-        onehot = torch.zeros(*counts.shape, km, device=counts.device)
-        onehot_ = onehot.view(-1, km)
-        g = onehot_.shape[0]
-        onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
-        return onehot_.view(*onehot.shape)
-
-    def get_basis(self, basis_mode):
-
-        if basis_mode == "id":
-            basis = (lambda x: x,)
-
-        elif basis_mode == "el":  # element-wise exp-linear
-            basis = (lambda x: x, lambda x: torch.exp(x))
-
-        elif basis_mode == "eq":  # element-wise exp-quadratic
-            basis = (lambda x: x, lambda x: x**2, lambda x: torch.exp(x))
-
-        elif basis_mode == "ec":  # element-wise exp-cubic
-            basis = (
-                lambda x: x,
-                lambda x: x**2,
-                lambda x: x**3,
-                lambda x: torch.exp(x),
-            )
-
-        elif basis_mode == "qd":  # exp and full quadratic
-
-            def mix(x):
-                C = x.shape[-1]
-                out = torch.empty((*x.shape[:-1], C * (C - 1) // 2), dtype=x.dtype).to(
-                    x.device
-                )
-                k = 0
-                for c in range(1, C):
-                    for c_ in range(c):
-                        out[..., k] = x[..., c] * x[..., c_]
-                        k += 1
-
-                return out  # shape (..., C*(C-1)/2)
-
-            basis = (
-                lambda x: x,
-                lambda x: x**2,
-                lambda x: torch.exp(x),
-                lambda x: mix(x),
-            )
-
-        else:
-            raise ValueError("Invalid basis expansion")
-
-        return basis
-
-    def get_logp(self, F_mu, neuron):
-        """
-        Compute count probabilities from the rate model output.
-
-        :param torch.Tensor F_mu: the F_mu product output of the rate model (samples and/or trials, F_dims, time)
-        :returns: log probability tensor
-        :rtype: tensor of shape (samples and/or trials, n, t, c)
-        """
-        T = F_mu.shape[-1]
-        samples = F_mu.shape[0]
-
-        inps = F_mu.permute(0, 2, 1).reshape(
-            samples * T, -1
-        )  # (samplesxtime, in_dimsxchannels)
-        inps = inps.view(inps.shape[0], -1, self.C)
-        inps = torch.cat([f_(inps) for f_ in self.basis], dim=-1)
-        a = self.mapping_net(inps, neuron).view(samples * T, -1)  # samplesxtime, NxK
-
-        log_probs = self.lsoftm(a.view(samples, T, -1, self.K + 1).permute(0, 2, 1, 3))
-        return log_probs
-
-    def sample_helper(self, h, b, neuron, samples):
-        """
-        NLL helper function for sample evaluation.
-        """
-        batch_edge, _, _ = self.batch_info
-        logp = self.get_logp(h, neuron)
-        spikes = self.all_spikes[:, neuron, batch_edge[b] : batch_edge[b + 1]].to(
-            self.tbin.device
-        )
-        if (
-            self.trials != 1 and samples > 1 and self.trials < h.shape[0]
-        ):  # cannot rely on broadcasting
-            spikes = spikes.repeat(samples, 1, 1)
-        tar = self.counts_to_onehot(spikes)
-
-        return logp, tar
-
-    def _neuron_to_F(self, neuron):
-        """
-        Access subset of neurons in expanded space.
-        Note the F_dims here is equal to NxC flattened.
-        """
-        neuron = self._validate_neuron(neuron)
-        if len(neuron) == self.neurons:
-            F_dims = list(range(self.F_dims))
-        else:  # access subset of neurons
-            F_dims = list(
-                np.concatenate(
-                    [np.arange(n * self.C, (n + 1) * self.C) for n in neuron]
-                )
-            )
-
-        return F_dims
-
-    def objective(self, F_mu, F_var, XZ, b, neuron, samples=10, mode="MC"):
-        """
-        Computes the terms for variational expectation :math:`\mathbb{E}_{q(f)q(z)}[]`, which
-        can be used to compute different likelihood objectives.
-        The returned tensor will have sample dimension as MC over :math:`q(z)`, depending
-        on the evaluation mode will be MC or GH or exact over the likelihood samples. This
-        is all combined in to the same dimension to be summed over. The weights :math:`w_s`
-        are the quadrature weights or equal weights for MC, with appropriate normalization.
-
-        :param int samples: number of MC samples or GH points (exact will ignore and give 1)
-
-        :returns: negative likelihood term of shape (samples, timesteps)
-        """
-        F_dims = self._neuron_to_F(neuron)
-
-        if mode == "MC":
-            h = base.mc_gen(
-                F_mu, F_var, samples, F_dims
-            )  # h has only observed neurons (from neuron)
-            logp, tar = self.sample_helper(h, b, neuron, samples)
-            ws = torch.tensor(1.0 / logp.shape[0])
-
-        elif mode == "GH":
-            h, ws = base.gh_gen(F_mu, F_var, samples, F_dims)
-            logp, tar = self.sample_helper(h, b, neuron, samples)
-            ws = ws[:, None]
-
-        elif mode == "direct":
-            rates, n_l_rates, spikes = self.sample_helper(
-                F_mu[:, F_dims, :], b, neuron, samples
-            )
-            ws = torch.tensor(1.0 / rates.shape[0])
-
-        else:
-            raise NotImplementedError
-
-        nll = -(tar * logp).sum(-1)
-        return nll.sum(1), ws
-
-    def sample(self, F_mu, neuron, XZ=None, rng=None):
-        """
-        Sample from the categorical distribution.
-
-        :param numpy.array log_probs: log count probabilities (trials, neuron, timestep, counts), no
-                                      need to be normalized
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
-        """
-        if rng is None:
-            rng = np.random.default_rng()
-
-        F_dims = self._neuron_to_F(neuron)
-        log_probs = self.get_logp(
-            torch.tensor(F_mu[:, F_dims, :], dtype=self.tensor_type)
-        )
-        cnt_prob = torch.exp(log_probs)
-
-        return gen_categorical(rng, cnt_prob.cpu().numpy())
-
-
-# count distributions
 class Bernoulli(_count_model):
     """
     Inhomogeneous Bernoulli likelihood, limits the count to binary trains.
@@ -1039,3 +759,285 @@ class hCOM_Poisson(COM_Poisson):
 
     def KL_prior(self):
         return self.dispersion_mapping.KL_prior()
+
+    
+    
+# UCM
+class Parallel_Linear(nn.Module):
+    """
+    Linear layers that separate different operations in one dimension.
+    """
+
+    __constants__ = ["in_features", "out_features", "channels"]
+    in_features: int
+    out_features: int
+    weight: torch.Tensor
+
+    def __init__(
+        self, in_features: int, out_features: int, channels: int, bias: bool = True
+    ) -> None:
+        """
+        If channels is 1, then we share all the weights over the channel dimension.
+        """
+        super(Parallel_Linear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.channels = channels
+        self.weight = Parameter(torch.randn(channels, out_features, in_features))
+        if bias:
+            self.bias = Parameter(torch.randn(channels, out_features))
+        else:
+            self.register_parameter("bias", None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / math.sqrt(fan_in)
+            nn.init.uniform_(self.bias, -bound, bound)
+
+    def forward(self, input: torch.Tensor, channels: list) -> torch.Tensor:
+        """
+        :param torch.tensor input: input of shape (batch, channels, in_dims)
+        """
+        W = self.weight[None, channels, ...]
+        B = 0 if self.bias is None else self.bias[None, channels, :]
+
+        return (W * input[..., None, :]).sum(-1) + B
+
+    def extra_repr(self) -> str:
+        return "in_features={}, out_features={}, channels={}, bias={}".format(
+            self.in_features, self.out_features, self.channels, self.bias is not None
+        )
+
+
+class Universal(base._likelihood):
+    """
+    Universal count distribution with finite cutoff at max_count.
+
+    """
+
+    def __init__(
+        self, neurons, C, basis_mode, inv_link, max_count, tensor_type=torch.float
+    ):
+        super().__init__(1.0, neurons * C, neurons, inv_link, tensor_type)  # dummy tbin
+        self.K = max_count
+        self.C = C
+        self.neurons = neurons
+        self.lsoftm = torch.nn.LogSoftmax(dim=-1)
+
+        self.basis = self.get_basis(basis_mode)
+        expand_C = torch.cat(
+            [f_(torch.ones(1, self.C)) for f_ in self.basis], dim=-1
+        ).shape[
+            -1
+        ]  # size of expanded vector
+
+        mapping_net = Parallel_Linear(
+            expand_C, (max_count + 1), neurons
+        )  # single linear mapping
+        self.add_module("mapping_net", mapping_net)  # maps from NxC to NxK
+
+    def set_Y(self, spikes, batch_info):
+        """
+        Get all the activity into batches useable format for fast log-likelihood evaluation.
+        Batched spikes will be a list of tensors of shape (trials, neurons, time) with trials
+        set to 1 if input has no trial dimension (e.g. continuous recording).
+
+        :param np.ndarray spikes: becomes a list of [neuron_dim, batch_dim]
+        :param int/list batch_size:
+        :param int filter_len: history length of the GLM couplings (1 indicates no history coupling)
+        """
+        if self.K < spikes.max():
+            raise ValueError("Maximum count is exceeded in the spike count data")
+        super().set_Y(spikes, batch_info)
+
+    def onehot_to_counts(self, onehot):
+        """
+        Convert one-hot vector representation of counts. Assumes the event dimension is the last.
+
+        :param torch.Tensor onehot: one-hot vector representation of shape (..., event)
+        :returns: spike counts
+        :rtype: torch.tensor
+        """
+        counts = torch.zeros(*onehot.shape[:-1], device=onehot.device)
+        inds = torch.where(onehot)
+        counts[inds[:-1]] = inds[-1].float()
+        return counts
+
+    def counts_to_onehot(self, counts):
+        """
+        Convert counts to one-hot vector representation. Adds the event dimension at the end.
+
+        :param torch.Tensor counts: spike counts of some tensor shape
+        :param int max_counts: size of the event dimension (max_counts + 1)
+        :returns: one-hot representation of shape (*counts.shape, event)
+        :rtype: torch.tensor
+        """
+        km = self.K + 1
+        onehot = torch.zeros(*counts.shape, km, device=counts.device)
+        onehot_ = onehot.view(-1, km)
+        g = onehot_.shape[0]
+        onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
+        return onehot_.view(*onehot.shape)
+
+    def get_basis(self, basis_mode):
+
+        if basis_mode == "id":
+            basis = (lambda x: x,)
+
+        elif basis_mode == "el":  # element-wise exp-linear
+            basis = (lambda x: x, lambda x: torch.exp(x))
+
+        elif basis_mode == "eq":  # element-wise exp-quadratic
+            basis = (lambda x: x, lambda x: x**2, lambda x: torch.exp(x))
+
+        elif basis_mode == "ec":  # element-wise exp-cubic
+            basis = (
+                lambda x: x,
+                lambda x: x**2,
+                lambda x: x**3,
+                lambda x: torch.exp(x),
+            )
+
+        elif basis_mode == "qd":  # exp and full quadratic
+
+            def mix(x):
+                C = x.shape[-1]
+                out = torch.empty((*x.shape[:-1], C * (C - 1) // 2), dtype=x.dtype).to(
+                    x.device
+                )
+                k = 0
+                for c in range(1, C):
+                    for c_ in range(c):
+                        out[..., k] = x[..., c] * x[..., c_]
+                        k += 1
+
+                return out  # shape (..., C*(C-1)/2)
+
+            basis = (
+                lambda x: x,
+                lambda x: x**2,
+                lambda x: torch.exp(x),
+                lambda x: mix(x),
+            )
+
+        else:
+            raise ValueError("Invalid basis expansion")
+
+        return basis
+
+    def get_logp(self, F_mu, neuron):
+        """
+        Compute count probabilities from the rate model output.
+
+        :param torch.Tensor F_mu: the F_mu product output of the rate model (samples and/or trials, F_dims, time)
+        :returns: log probability tensor
+        :rtype: tensor of shape (samples and/or trials, n, t, c)
+        """
+        T = F_mu.shape[-1]
+        samples = F_mu.shape[0]
+
+        inps = F_mu.permute(0, 2, 1).reshape(
+            samples * T, -1
+        )  # (samplesxtime, in_dimsxchannels)
+        inps = inps.view(inps.shape[0], -1, self.C)
+        inps = torch.cat([f_(inps) for f_ in self.basis], dim=-1)
+        a = self.mapping_net(inps, neuron).view(samples * T, -1)  # samplesxtime, NxK
+
+        log_probs = self.lsoftm(a.view(samples, T, -1, self.K + 1).permute(0, 2, 1, 3))
+        return log_probs
+
+    def sample_helper(self, h, b, neuron, samples):
+        """
+        NLL helper function for sample evaluation.
+        """
+        batch_edge, _, _ = self.batch_info
+        logp = self.get_logp(h, neuron)
+        spikes = self.all_spikes[:, neuron, batch_edge[b] : batch_edge[b + 1]].to(
+            self.tbin.device
+        )
+        if (
+            self.trials != 1 and samples > 1 and self.trials < h.shape[0]
+        ):  # cannot rely on broadcasting
+            spikes = spikes.repeat(samples, 1, 1)
+        tar = self.counts_to_onehot(spikes)
+
+        return logp, tar
+
+    def _neuron_to_F(self, neuron):
+        """
+        Access subset of neurons in expanded space.
+        Note the F_dims here is equal to NxC flattened.
+        """
+        neuron = self._validate_neuron(neuron)
+        if len(neuron) == self.neurons:
+            F_dims = list(range(self.F_dims))
+        else:  # access subset of neurons
+            F_dims = list(
+                np.concatenate(
+                    [np.arange(n * self.C, (n + 1) * self.C) for n in neuron]
+                )
+            )
+
+        return F_dims
+
+    def objective(self, F_mu, F_var, XZ, b, neuron, samples=10, mode="MC"):
+        """
+        Computes the terms for variational expectation :math:`\mathbb{E}_{q(f)q(z)}[]`, which
+        can be used to compute different likelihood objectives.
+        The returned tensor will have sample dimension as MC over :math:`q(z)`, depending
+        on the evaluation mode will be MC or GH or exact over the likelihood samples. This
+        is all combined in to the same dimension to be summed over. The weights :math:`w_s`
+        are the quadrature weights or equal weights for MC, with appropriate normalization.
+
+        :param int samples: number of MC samples or GH points (exact will ignore and give 1)
+
+        :returns: negative likelihood term of shape (samples, timesteps)
+        """
+        F_dims = self._neuron_to_F(neuron)
+
+        if mode == "MC":
+            h = base.mc_gen(
+                F_mu, F_var, samples, F_dims
+            )  # h has only observed neurons (from neuron)
+            logp, tar = self.sample_helper(h, b, neuron, samples)
+            ws = torch.tensor(1.0 / logp.shape[0])
+
+        elif mode == "GH":
+            h, ws = base.gh_gen(F_mu, F_var, samples, F_dims)
+            logp, tar = self.sample_helper(h, b, neuron, samples)
+            ws = ws[:, None]
+
+        elif mode == "direct":
+            rates, n_l_rates, spikes = self.sample_helper(
+                F_mu[:, F_dims, :], b, neuron, samples
+            )
+            ws = torch.tensor(1.0 / rates.shape[0])
+
+        else:
+            raise NotImplementedError
+
+        nll = -(tar * logp).sum(-1)
+        return nll.sum(1), ws
+
+    def sample(self, F_mu, neuron, XZ=None, rng=None):
+        """
+        Sample from the categorical distribution.
+
+        :param numpy.array log_probs: log count probabilities (trials, neuron, timestep, counts), no
+                                      need to be normalized
+        :returns: spike train of shape (trials, neuron, timesteps)
+        :rtype: np.array
+        """
+        if rng is None:
+            rng = np.random.default_rng()
+
+        F_dims = self._neuron_to_F(neuron)
+        log_probs = self.get_logp(
+            torch.tensor(F_mu[:, F_dims, :], dtype=self.tensor_type)
+        )
+        cnt_prob = torch.exp(log_probs)
+
+        return gen_categorical(rng, cnt_prob.cpu().numpy())

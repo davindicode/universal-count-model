@@ -1,3 +1,18 @@
+import numpy as np
+import pickle
+
+import torch
+
+import matplotlib.pyplot as plt
+
+import os
+    
+import sys
+sys.path.append("..")
+from neuroprob import utils
+
+
+
 def model_icons(fig):
     delX = 0.5
     Xoff = -0.1
@@ -655,40 +670,45 @@ def main():
     latent_dict_modIP = datarun['latent']
     correlations_modIP = datarun['correlations']
 
-    
     # plot
     fig = plt.figure(figsize=(8, 2))
+    fig.text(-0.04, 1.1, 'A', fontsize=15, fontweight='bold')
+    fig.text(-0.04, -0.95, 'B', fontsize=15, fontweight='bold')
+    #fig.text(0.0, -1.75, 'C', fontsize=15)
 
-    ### components ###
-    graphical_model(fig, 0.02, 0.0)
-    count_dists(fig)
-    latent_traj(fig)
 
-    mean_tunings(fig)
-    FF_tunings(fig)
+    rhd_t = rcov[0]
+    ra_t = rcov_ll[1]
 
-    ### connections ###
+    ### regression ###
+    model_icons(fig)
+    regression_scores(fig)
+    count_tuning(fig)
+
+    # line
+    Yoff = 0.0
+
     widths = [1]
     heights = [1]
     spec = fig.add_gridspec(ncols=len(widths), nrows=len(heights), width_ratios=widths, 
                             height_ratios=heights, 
-                            left=0.25, right=1., bottom=-0.5, top=0.8)
+                            left=0.45, right=0.5, bottom=-0.7+Yoff, top=1.+Yoff)
     ax = fig.add_subplot(spec[0, 0])
+    yy = np.linspace(0, 1., 10)
+    ax.plot(1.*np.ones_like(yy), yy, 'k', linewidth=.9)
     ax.axis('off')
 
-    style = "simple, head_length=8.4, head_width=6.2"
-    kw = dict(arrowstyle=style, color="gray")
-    a = patches.FancyArrowPatch((0.08, 0.425), (0.145, 0.425),
-                             connectionstyle="arc3,rad={}".format(0), **kw)
-    ax.add_patch(a)
 
-    style = "simple, head_length=8.4, head_width=6.2"
-    kw = dict(arrowstyle=style, color="gray")
-    a = patches.FancyArrowPatch((0.03, 0.95), (0.145, 0.95),
-                             connectionstyle="arc3,rad={}".format(0), **kw)
-    ax.add_patch(a)
+    ### LVM ###
+    latent_variables(fig)
+    LVM_scores(fig)
 
-    plt.savefig('output/plot_schem.pdf')
+    ### noise correlations ###
+    noise_correlations(fig)
+    latent_observed_tuning(fig)
+
+    plt.savefig('output/plot_synthetic.pdf')
+
     
     
     
