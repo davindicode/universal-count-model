@@ -28,7 +28,7 @@ import utils
 
 def regression():
     ### cross-validation of regression models ###
-    kcvs = [2, 5, 8] # validation sets chosen in 10-fold split of data
+    kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000  # batch size for cross-validation
 
     RG_cv_ll = []

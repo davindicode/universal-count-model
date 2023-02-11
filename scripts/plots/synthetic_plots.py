@@ -634,3 +634,63 @@ def latent_observed_tuning(fig):
         ax.set_yticks([])
         if en == 1:
             ax.set_xlabel(r'$z$', fontsize=10)
+            
+            
+            
+def main():
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+    plt.style.use(['paper.mplstyle'])
+    
+    # load
+    datarun = pickle.load(open('./saves/hCMP_results.p', 'rb'))
+
+    regression_hCMP = datarun['regression']
+    dispersion_hCMP = datarun['dispersion']
+    latent_dict_hCMP = datarun['latent']
+
+
+    datarun = pickle.load(open('./saves/modIP_results.p', 'rb'))
+
+    latent_dict_modIP = datarun['latent']
+    correlations_modIP = datarun['correlations']
+
+    
+    # plot
+    fig = plt.figure(figsize=(8, 2))
+
+    ### components ###
+    graphical_model(fig, 0.02, 0.0)
+    count_dists(fig)
+    latent_traj(fig)
+
+    mean_tunings(fig)
+    FF_tunings(fig)
+
+    ### connections ###
+    widths = [1]
+    heights = [1]
+    spec = fig.add_gridspec(ncols=len(widths), nrows=len(heights), width_ratios=widths, 
+                            height_ratios=heights, 
+                            left=0.25, right=1., bottom=-0.5, top=0.8)
+    ax = fig.add_subplot(spec[0, 0])
+    ax.axis('off')
+
+    style = "simple, head_length=8.4, head_width=6.2"
+    kw = dict(arrowstyle=style, color="gray")
+    a = patches.FancyArrowPatch((0.08, 0.425), (0.145, 0.425),
+                             connectionstyle="arc3,rad={}".format(0), **kw)
+    ax.add_patch(a)
+
+    style = "simple, head_length=8.4, head_width=6.2"
+    kw = dict(arrowstyle=style, color="gray")
+    a = patches.FancyArrowPatch((0.03, 0.95), (0.145, 0.95),
+                             connectionstyle="arc3,rad={}".format(0), **kw)
+    ax.add_patch(a)
+
+    plt.savefig('output/plot_schem.pdf')
+    
+    
+    
+if __name__ == "__main__":
+    main()

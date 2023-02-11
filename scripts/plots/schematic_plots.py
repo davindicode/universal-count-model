@@ -1,3 +1,21 @@
+import numpy as np
+import scipy.special as sps
+
+import torch
+
+import matplotlib.pyplot as plt
+from matplotlib import patches
+
+import os
+    
+import sys
+sys.path.append("..")
+from neuroprob import utils
+
+
+
+
+
 def graphical_model(fig, X, Y):
     widths = [1]
     heights = [1]
@@ -12,8 +30,7 @@ def graphical_model(fig, X, Y):
     Yoff = -0.6
 
     # Instantiate the PGM
-    pgm = daft.PGM(shape=(2.5, 3.0), node_unit=0.7)
-    utils.plots.daft_init_figax(pgm, fig, ax)
+    pgm = utils.plots.daft_init_figax(fig, ax, shape=(2.5, 3.0), node_unit=0.7)
 
     pgm.add_node("f", r"$f_{cnt}$", 1.+Xoff, 2.6+Yoff, plot_params={'fc': 'white'})
     pgm.add_node("x", r"$\mathbf{x}_{t}$", .775+Xoff, 3.2+Yoff, observed=True, plot_params={'ec': 'tab:red'}, 
@@ -88,11 +105,11 @@ def count_dists(fig):
 
 
     # tuning curves with uncertainties
-    m_l, m_m, m_u = utils.stats.percentiles_from_samples(torch.tensor(m).float())
+    m_l, m_m, m_u = utils.stats.percentiles_from_samples(torch.from_numpy(m).float())
 
-    ff_l, ff_m, ff_u = utils.stats.percentiles_from_samples(torch.tensor(ff).float())
+    ff_l, ff_m, ff_u = utils.stats.percentiles_from_samples(torch.from_numpy(ff).float())
 
-    pP_l, pP_m, pP_u = utils.stats.percentiles_from_samples(torch.tensor(P).float())
+    pP_l, pP_m, pP_u = utils.stats.percentiles_from_samples(torch.from_numpy(P).float())
 
 
     # 2D heatmaps
@@ -391,3 +408,49 @@ def FF_tunings(fig):
     ax.annotate('', xy=(0.85, 0.55), zorder=1, 
                 xytext=(1., 0.55), arrowprops=dict(arrowstyle='|-|,widthA=0.2,widthB=0.2', color='gray'))
     ax.axis('off')
+    
+    
+    
+def main():
+    if not os.path.exists('./output'):
+        os.makedirs('./output')
+    plt.style.use(['paper.mplstyle'])
+    
+    # plot
+    fig = plt.figure(figsize=(8, 2))
+
+    ### components ###
+    graphical_model(fig, 0.02, 0.0)
+    count_dists(fig)
+    latent_traj(fig)
+
+    mean_tunings(fig)
+    FF_tunings(fig)
+
+    ### connections ###
+    widths = [1]
+    heights = [1]
+    spec = fig.add_gridspec(ncols=len(widths), nrows=len(heights), width_ratios=widths, 
+                            height_ratios=heights, 
+                            left=0.25, right=1., bottom=-0.5, top=0.8)
+    ax = fig.add_subplot(spec[0, 0])
+    ax.axis('off')
+
+    style = "simple, head_length=8.4, head_width=6.2"
+    kw = dict(arrowstyle=style, color="gray")
+    a = patches.FancyArrowPatch((0.08, 0.425), (0.145, 0.425),
+                             connectionstyle="arc3,rad={}".format(0), **kw)
+    ax.add_patch(a)
+
+    style = "simple, head_length=8.4, head_width=6.2"
+    kw = dict(arrowstyle=style, color="gray")
+    a = patches.FancyArrowPatch((0.03, 0.95), (0.145, 0.95),
+                             connectionstyle="arc3,rad={}".format(0), **kw)
+    ax.add_patch(a)
+
+    plt.savefig('output/plot_schem.pdf')
+    
+    
+    
+if __name__ == "__main__":
+    main()
