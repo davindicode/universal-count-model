@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 
-sys.path.append("../lib/")
+sys.path.append("../..")
 import neuroprob as nprb
 from neuroprob import utils
 

@@ -23,7 +23,6 @@ def graphical_model(fig, X, Y):
                             height_ratios=heights, 
                             left=0.0+X, right=0.35+X, bottom=-.8+Y, top=1.0+Y)
 
-
     ax = fig.add_subplot(spec[0, 0])
 
     Xoff = -0.3

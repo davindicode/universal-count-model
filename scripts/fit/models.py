@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
-sys.path.append("..")
+sys.path.append("../..")
 
 import neuroprob as nprb
 from neuroprob import kernels, utils
@@ -114,10 +114,7 @@ def get_dataset(data_type, bin_size, path):
 ### model ###
 class Siren(nn.Module):
     """
-    Activation function class for SIREN
-
-    `Implicit Neural Representations with Periodic Activation Functions`,
-    Vincent Sitzmann, Julien N. P. Martel, Alexander W. Bergman, David B. Lindell, Gordon Wetzstein
+    Sinusoidal activation function class (SIREN)
     """
 
     def __init__(self):
@@ -452,7 +449,9 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
 
 
 def latent_kernel(z_mode, num_induc, out_dims):
-    """ """
+    """
+    Create the kernel tuples and inducing point lists for latent spaces
+    """
     z_mode_comps = z_mode.split("-")
 
     ind_list = []
@@ -635,7 +634,7 @@ def get_likelihood(model_dict, cov, enc_used):
         )
 
     elif ll_mode_comps[0] == "NB":
-        r_inv = 10.0 * torch.ones(inner_dims)
+        r_inv = 1.0 * torch.ones(inner_dims)
         likelihood = nprb.likelihoods.Negative_binomial(
             tbin, inner_dims, inv_link, r_inv, tensor_type=tensor_type
         )
@@ -698,7 +697,7 @@ def standard_parser(usage, description):
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
     parser.add_argument(
-        "--checkpoint_dir", default="./checkpoint/", action="store", type=str
+        "--checkpoint_dir", action="store", type=str
     )
 
     parser.add_argument("--tensor_type", default="float", action="store", type=str)

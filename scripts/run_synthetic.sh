@@ -33,6 +33,9 @@ python3 models.py --data_type hCMP --checkpoint_dir ./checkpoint/ --data_path ..
 
 
 
+
+python3 models.py --data_type hCMP1 --checkpoint_dir ../checkpoint/ --data_path ../../data/ --cv_folds 10 --cv -1 2 5 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 1 --likelihood NB-exp --mapping svgp-6 --x_mode hd --lr 5e-3 --jitter 1e-4 --gpu 0
+
 # analysis
 python3 hCMP_analysis.py
 python3 modIP_analysis.py

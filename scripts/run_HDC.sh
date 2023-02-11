@@ -1,5 +1,8 @@
 #!/bin/bash
 
+### fitting ###
+cd ./fit/
+
 
 # model selection
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 40 --likelihood U-el-3 --mapping svgp-64 --x_mode hd-omega-speed-x-y-time --lr 1e-2 --jitter 1e-5 --gpu 0
@@ -64,12 +67,16 @@ python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 100 --likelihood hNB-exp --mapping svgp-8 --z_mode T1 --lr 3e-2 --lr_2 5e-3 --jitter 1e-5 --gpu 1
 
 
-# analysis
+### analysis ###
+cd ../analysis/
+
 python3 th_regression.py
 python3 th_noise_correlations.py
 python3 th_latent_variable.py
 
 
-# plots
+### plots ###
+cd ../plots/
+
 python3 th1_analysis_plots.py
 python3 th1_additional_plots.py

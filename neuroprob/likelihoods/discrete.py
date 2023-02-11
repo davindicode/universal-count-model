@@ -485,8 +485,8 @@ class Negative_binomial(_count_model):
     def constrain(self):
         if self.r_inv is not None:
             self.r_inv.data = torch.clamp(
-                self.r_inv.data, min=0.0
-            )
+                self.r_inv.data, min=0.0, max=1e3
+            )  # avoid r too small (r_inv too big) for numerical stability
 
     def get_saved_factors(self, b, neuron, spikes):
         """
@@ -534,23 +534,21 @@ class Negative_binomial(_count_model):
         
         # when r becomes very large, parameterization in r becomes numerically unstable
         asymptotic_mask = (r_inv < 1e-4)  # use Taylor expansion in 1/r
-        r = 1.0 / (r_inv + asymptotic_mask)  # add mask not using r_
-        r= torch.clamp(r, min=1000.)  # avoid r too small
-
+        r = 1.0 / (r_inv + asymptotic_mask)  # add mask not using r to avoid NaNs
+        
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         lambd = rates * self.tbin
         fac_lgamma = -torch.lgamma(spikes + r) + torch.lgamma(r)
-        fac_power = (spikes + r) * safe_log(r + lambd) - r * safe_log(r)
+        fac_power = (spikes + r) * safe_log(1 + lambd / r) + spikes * safe_log(r)
 
         nll_r = fac_power + fac_lgamma
         nll_r_inv = lambd + torch.log(
-            1.0 + r_inv * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
+            1.0 + asymptotic_mask * r_inv * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
         )  # Taylor expansion in 1/r
 
         nll = -n_l_rates - tfact + lfact
-        asymptotic_mask = asymptotic_mask.expand(*nll.shape)
-        nll[asymptotic_mask] = nll[asymptotic_mask] + nll_r_inv[asymptotic_mask]
-        nll[~asymptotic_mask] = nll[~asymptotic_mask] + nll_r[~asymptotic_mask]
+        asymptotic_mask = asymptotic_mask.type(nll.dtype).expand(*nll.shape)
+        nll = nll + asymptotic_mask * nll_r_inv + (1. - asymptotic_mask) * nll_r
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -604,7 +602,9 @@ class hNegative_binomial(Negative_binomial):
     ):
         super().__init__(tbin, neurons, inv_link, None, tensor_type, strict_likelihood)
         self.dispersion_mapping = dispersion_mapping
-        self.dispersion_mapping_f = torch.exp
+        self.dispersion_mapping_f = lambda x: torch.clamp(
+            torch.nn.functional.softplus(x), max=1e3  # softplus more suited than exp
+        )  # avoid r too small (r_inv too big) for numerical stability
 
     def constrain(self):
         self.dispersion_mapping.constrain()
