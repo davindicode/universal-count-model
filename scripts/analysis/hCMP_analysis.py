@@ -383,15 +383,15 @@ def latent_variable():
 
 def main():
     dev = nprb.utils.pytorch.get_device(gpu=0)
-    if not os.path.exists('./saves'):
-        os.makedirs('./saves')
+    if not os.path.exists('../output'):
+        os.makedirs('../output')
     
-    data_path = '../data/'
+    data_path = '../../data/'
 
     # names
     reg_config_names = [
         'hCMP1_IP-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
-        #'hCMP1_hNB-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+        'hCMP1_hNB-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
         'hCMP1_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
         'hCMP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f', 
     ]
@@ -401,7 +401,7 @@ def main():
 
     lat_config_names = [
         'hCMP1_IP-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
-        #'hCMP1_hNB-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
+        'hCMP1_hNB-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
         'hCMP1_U-el-3_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
         'hCMP1_U-el-3_ffnn-50-50-100_X[]_Z[T1]_1K18_0d0_10f', 
     ]

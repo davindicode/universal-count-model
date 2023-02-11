@@ -517,6 +517,7 @@ class Negative_binomial(_count_model):
         
         We parameterize the likelihood with :math:`r^{-1}`, with the Poisson limit (:math:`r^{-1} \to 0`)
         using a Taylor series expansion in :math:`r^{-1}` retaining :math:`\log{1 + O(r^{-1})}`.
+        This allows one to reach the Poisson limit numerically.
 
         :param int b: batch index to evaluate
         :param torch.Tensor rates: rates of shape (trial, neuron, time)
