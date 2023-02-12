@@ -1,24 +1,23 @@
 import argparse
-import torch
-import torch.optim as optim
-import torch.nn.Parameter as Parameter
 
-import scipy.stats as scstats
-import numpy as np
+import os
 
 import pickle
 
-import os
-    
-    
 import sys
 
-sys.path.append("..") # access to library
+import numpy as np
+
+import scipy.stats as scstats
+import torch
+import torch.nn.Parameter as Parameter
+import torch.optim as optim
+
+sys.path.append("..")  # access to library
 import neuroprob as nprb
 
-sys.path.append("../scripts") # access to scripts
+sys.path.append("../scripts")  # access to scripts
 import models
-
 
 
 def latent_variable():
@@ -40,9 +39,9 @@ def latent_variable():
     LVM_cv_ll = []
     for kcv in kcvs:
         for mode in modes:
-            cvdata = model_utils.get_cv_sets(mode, [kcv], 5000, rc_t, resamples, rcov_lvm)[
-                0
-            ]
+            cvdata = model_utils.get_cv_sets(
+                mode, [kcv], 5000, rc_t, resamples, rcov_lvm
+            )[0]
             _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
             cv_set = (ftrain, fcov, vtrain, vcov)
 
@@ -85,8 +84,9 @@ def latent_variable():
 
     LVM_cv_ll = np.array(LVM_cv_ll).reshape(len(kcvs), len(modes), len(val_neuron))
 
-
-    def circ_drift_regression(x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_fac=1):
+    def circ_drift_regression(
+        x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_fac=1
+    ):
         t = torch.tensor(t, device=dev)
         X = torch.tensor(x, device=dev)
         Z = torch.tensor(z, device=dev)
@@ -116,7 +116,6 @@ def latent_variable():
                 losses_ = losses
 
         return a_fac * a_, sign_, shift_, losses_
-
 
     # trajectory regression to align to data and compute drifts
     topology = "torus"
@@ -168,14 +167,15 @@ def latent_variable():
             lat_t = torch.tensor(
                 (np.arange(cvT) * tbin * drift + shift + sign * lat) % (2 * np.pi)
             )
-            D = utils.latent.metric(torch.tensor(tar_t)[mask], lat_t[mask], topology) ** 2
+            D = (
+                utils.latent.metric(torch.tensor(tar_t)[mask], lat_t[mask], topology)
+                ** 2
+            )
             RMS_cv.append(D.mean().item())
             drifts_lv.append(drift)
 
-
     RMS_cv = np.array(RMS_cv).reshape(len(modes), len(CV))
     drifts_lv = np.array(drifts_lv).reshape(len(modes), len(CV))
-
 
     # compute delays in latent trajectory w.r.t. data, see which one fits best in RMS
     topology = "torus"
@@ -228,17 +228,17 @@ def latent_variable():
             lat_ = torch.tensor(
                 (np.arange(cvT) * tbin * drift + shift + sign * lat) % (2 * np.pi)
             )
-            Dd = utils.latent.metric(torch.tensor(tar_t)[mask], lat_[mask], topology) ** 2
+            Dd = (
+                utils.latent.metric(torch.tensor(tar_t)[mask], lat_[mask], topology)
+                ** 2
+            )
             delay_RMS.append(Dd.mean().item())
 
-
     delay_RMS = np.array(delay_RMS).reshape(len(delays), len(CV))
-
 
     # get the latent inferred trajectory
     mode = modes[0]
     topology = "torus"
-
 
     cvdata = model_utils.get_cv_sets(mode, [-1], 5000, rc_t, resamples, rcov_lvm)[0]
     _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
@@ -263,72 +263,79 @@ def latent_variable():
     lat = X_loc[0]
 
     drift, sign, shift, _ = circ_drift_regression(
-        tar_t[fit_range], lat[fit_range], fit_range * tbin, topology, dev=dev, a_fac=1e-5
+        tar_t[fit_range],
+        lat[fit_range],
+        fit_range * tbin,
+        topology,
+        dev=dev,
+        a_fac=1e-5,
     )
 
-    lat_t = (np.arange(rhd_t.shape[0]) * tbin * drift + shift + sign * lat) % (2 * np.pi)
+    lat_t = (np.arange(rhd_t.shape[0]) * tbin * drift + shift + sign * lat) % (
+        2 * np.pi
+    )
     lat_t_std = X_std[0]
 
-
-    latent_dict = {
-        lat_t, lat_t_std, delay_RMS, RMS_cv, LVM_cv_ll, drifts_lv, rcov_lvm
-    }
+    latent_dict = {lat_t, lat_t_std, delay_RMS, RMS_cv, LVM_cv_ll, drifts_lv, rcov_lvm}
 
     return latent_dict
 
 
 def main():
     ### parser ###
-    parser = argparse.ArgumentParser(usage="%(prog)s [OPTION] [FILE]...", 
-                                     description="Analysis of th1 regression models.")
+    parser = argparse.ArgumentParser(
+        usage="%(prog)s [OPTION] [FILE]...",
+        description="Analysis of th1 regression models.",
+    )
     parser.add_argument(
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
-    
+
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
-    
+
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
-    
+
     args = parser.parse_args()
-    
+
     ### setup ###
     save_dir = args.savedir
     data_path = args.datadir
-    
+
     if args.cpu:
         dev = "cpu"
     else:
         dev = nprb.inference.get_device(gpu=args.gpu)
-        
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    
+
     ### names ###
     lat_config_names = [
-        'th1_IP-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
-        'th1_hNB-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
-        'th1_U-el-3_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
+        "th1_IP-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1",
+        "th1_hNB-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1",
+        "th1_U-el-3_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1",
     ]
-    
+
     ### load dataset ###
-    data_path = '../data/'
-    data_type = 'th1'
+    data_path = "../data/"
+    data_type = "th1"
     bin_size = 100
 
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
-    
+
     ### analysis ###
     latent_dict = latent_variable()
-    
+
     ### export ###
     data_run = {
-        'latent': latent_dict,
+        "latent": latent_dict,
     }
-    
-    
-    
 
     pickle.dump(data_run, open("./saves/th1_LVM.p", "wb"))
+
+
+if __name__ == "__main__":
+    main()

@@ -140,3 +140,6 @@ Input groups can contain observed and latent variables, with different priors on
 - [tqdm](https://tqdm.github.io/) for visualizing fitting/training progress
 - [matplotlib](https://matplotlib.org/) (figure plotting)
 - [daft](https://docs.daft-pgm.org/en/latest/) (graphical model plots)
+
+
+Code formatting with [ufmt](https://pypi.org/project/ufmt/).

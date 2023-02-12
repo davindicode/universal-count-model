@@ -61,12 +61,11 @@ def percentiles_from_samples(
 # count statistics
 def poiss_count_prob(n, rate, sim_time):
     """
-    Evaluate count data against the Poisson process count distribution:
+    Evaluate count data against the Poisson process count distribution.
 
-    :param numpy.array alpha: Probabilities of the discrete target distribution. The
-        shape of the array dimensions is (samples, index) with index size :math:`n`.
-    :returns: Samples from the Gumbel-softmax indexed from :math:`0` to :math:`n-1`
-    :rtype: numpy.array
+    :param scalar n: count value
+    :param scalar rate: rate value
+    :param scalar sim_time: time bin size
     """
     g = rate * sim_time
     if g == 0:
@@ -81,10 +80,10 @@ def zip_count_prob(n, rate, alpha, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
 
-    :param numpy.array alpha: Probabilities of the discrete target distribution. The
-        shape of the array dimensions is (samples, index) with index size :math:`n`.
-    :returns: Samples from the Gumbel-softmax indexed from :math:`0` to :math:`n-1`
-    :rtype: numpy.array
+    :param scalar n: count value
+    :param scalar rate: rate value
+    :param scalar alpha: zero inflation probability
+    :param scalar sim_time: time bin size
     """
     g = rate * sim_time
     if g == 0:
@@ -101,6 +100,11 @@ def nb_count_prob(n, rate, r_inv, sim_time):
     """
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
+    
+    :param scalar n: count value
+    :param scalar rate: rate value
+    :param scalar r_inv: 1/r value
+    :param scalar sim_time: time bin size
     """
     g = rate * sim_time
     if g == 0:
@@ -124,6 +128,11 @@ def cmp_count_prob(n, rate, nu, sim_time, J=100):
     """
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
+    
+    :param scalar n: count value
+    :param scalar rate: rate value
+    :param scalar nu: dispersion parameter
+    :param scalar sim_time: time bin size
     """
     g = rate * sim_time
     if g == 0:
@@ -137,24 +146,6 @@ def cmp_count_prob(n, rate, nu, sim_time, J=100):
     logsumexp_Z = np.log(np.exp(dl - dl_m).sum()) + dl_m  # numerically stable
     return np.exp(np.log(g) * n - logsumexp_Z - sps.gammaln(n + 1) * nu)
 
-
-def modulated_count_dist(count_dist, mult_gain, add_gain, samples):
-    """
-    Generate distribution samples from the modulated count process with additive and multiplicate gains.
-
-    .. math::
-            P_{mod}(n|\lambda) = \int P_{count}(n|G_{mul}\lambda + G_{add}) P(G_{mu]}, G_{add}) \mathrm{d}G_{mul} \mathrm{d}G_{add},
-
-        where :math:`p(y \mid f)` is the likelihood.
-
-    References:
-
-    [1] `Dethroning the Fano Factor: A Flexible, Model-Based Approach to Partitioning Neural Variability`,
-         Adam S. Charles, Mijung Park, J. PatrickWeller, Gregory D. Horwitz, Jonathan W. Pillow (2018)
-
-    """
-
-    raise NotImplementedError
 
 
 def cdf_count_deq(n, deq, count_prob, N_MAX=100):
@@ -199,7 +190,7 @@ def count_KS_method(
     """
     Overdispersion analysis using rate-rescaled distributions and Kolmogorov-Smirnov
     statistics. Trajectory lengths are given, unless the expected count is below
-    min_spikes (avoid dequantization effect)
+    min_spikes (avoid dequantization effect).
 
     :param LambdaType count_dist: lambda function with input (count, rate, time) and output p
     :param LambdaType mean_func: lambda function with input (avg_rate*T) and output avg_cnt
@@ -230,7 +221,7 @@ def count_KS_method(
 
 def q_to_Z(quantiles, LIM=1e-15):
     """
-    Inverse transform to Gaussian variables from uniform variables.
+    Transform to Z-scores from quantiles.
     """
     _q = 1.0 - quantiles
     _q[_q < LIM] = LIM
@@ -241,7 +232,7 @@ def q_to_Z(quantiles, LIM=1e-15):
 
 def Z_to_q(Z, LIM=1e-15):
     """
-    Inverse transform to Gaussian variables from uniform variables.
+    Transform from Z-scores to quantiles.
     """
     q = scstats.norm.cdf(Z)
     return q
@@ -262,9 +253,9 @@ def KS_sampling_dist(x, samples, K=100000):
     )
 
 
-def KS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
+def KS_DS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
     """
-    Kolmogorov-Smirnov statistics using quantiles.
+    Kolmogorov-Smirnov and dispersion statistics using quantiles.
     """
     samples = quantiles.shape[0]
     assert samples > 1

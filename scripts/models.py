@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
-sys.path.append("../..")
+sys.path.append("..")
 
 import neuroprob as nprb
 from neuroprob import kernels, utils
@@ -696,9 +696,7 @@ def standard_parser(usage, description):
     parser.add_argument(
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
-    parser.add_argument(
-        "--checkpoint_dir", action="store", type=str
-    )
+    parser.add_argument("--checkpoint_dir", action="store", type=str)
 
     parser.add_argument("--tensor_type", default="float", action="store", type=str)
     parser.add_argument("--cpu", dest="cpu", action="store_true")

@@ -1,22 +1,20 @@
 import argparse
-import torch
-import scipy.stats as scstats
-import numpy as np
+
+import os
 
 import pickle
 
-import os
-    
-    
 import sys
 
-sys.path.append("..") # access to library
+import numpy as np
+import scipy.stats as scstats
+import torch
+
+sys.path.append("..")  # access to library
 import neuroprob as nprb
 
-sys.path.append("../scripts") # access to scripts
+sys.path.append("../scripts")  # access to scripts
 import models
-
-
 
 
 def variability_stats():
@@ -45,7 +43,9 @@ def variability_stats():
         max_count = int(rc_t.max())
         x_counts = torch.arange(max_count + 1)
 
-        cvdata = model_utils.get_cv_sets(mode, [kcv], batch_size, rc_t, resamples, rcov)[0]
+        cvdata = model_utils.get_cv_sets(
+            mode, [kcv], batch_size, rc_t, resamples, rcov
+        )[0]
         full_model = get_full_model(
             session_id,
             phase,
@@ -79,7 +79,6 @@ def variability_stats():
         var_models_z.append(torch.cat(var_model, dim=-1).mean(0).numpy())
         ff_models_z.append(torch.cat(ff_model, dim=-1).mean(0).numpy())
 
-
     b = 1
     Pearson_ffz = []
     ratioz = []
@@ -94,8 +93,7 @@ def variability_stats():
 
         Pearson_ffz.append(Pearson_ffz_)
         ratioz.append(ratioz_)
-    
-    
+
     variability_dict = {
         avg_models_z,
         var_models_z,
@@ -106,10 +104,8 @@ def variability_stats():
     return variability_dict
 
 
-
 def noise_correlations():
     x_counts = torch.arange(max_count + 1)
-
 
     # ELBO for models of different dimensions
     kcvs = [2, 5, 8]  # get corresponding training sets
@@ -157,7 +153,6 @@ def noise_correlations():
             elbo.append(np.array(elbo_).mean())
 
     elbo = np.array(elbo).reshape(len(Ms), len(kcvs))
-
 
     # cross validation for dimensionality
     beta = 0.0
@@ -256,21 +251,18 @@ def noise_correlations():
                         )
                     )
 
-
     cv_pll = np.array(cv_pll).reshape(len(Ms), len(kcvs), len(val_neuron))
-    
+
     noisecorr_dict = {
         cv_pll,
         elbo,
     }
 
 
-    
 def best_model():
     # get latent trajectories and drift timescale of neural tuning for 2D latent model
     mode = modes[2]
     batch_size = 5000
-
 
     cvdata = model_utils.get_cv_sets(mode, [-1], batch_size, rc_t, resamples, rcov)[0]
     full_model = get_full_model(
@@ -292,8 +284,9 @@ def best_model():
     X_s = X_std[6]
     z_tau = tbin / (1 - torch.sigmoid(full_model.inputs.p_mu_6).data.cpu().numpy())
 
-    t_lengths = full_model.mapping.kernel.kern1.lengthscale[:, 0, 0, -3].data.cpu().numpy()
-
+    t_lengths = (
+        full_model.mapping.kernel.kern1.lengthscale[:, 0, 0, -3].data.cpu().numpy()
+    )
 
     # load regression model with most input dimensions
     mode = modes[4]
@@ -310,7 +303,6 @@ def best_model():
         neurons,
         gpu=gpu_dev,
     )
-
 
     ### head direction tuning ###
     MC = 100
@@ -329,16 +321,13 @@ def best_model():
 
     P_mc = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).cpu()
 
-
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1).mean(0).numpy()
     pref_hd = covariates[0][np.argmax(avg, axis=1)]
-
 
     # marginalized tuning curves
     rcovz = list(rcov) + [X_c[:, 0], X_c[:, 1]]
     MC = 10
     skip = 10
-
 
     ### z ###
     step = 100
@@ -365,7 +354,6 @@ def best_model():
         mz1_ff.max(dim=-1)[0] + mz1_ff.min(dim=-1)[0]
     )
 
-
     step = 100
     P_tot = model_utils.marginalized_P(
         full_model,
@@ -389,7 +377,6 @@ def best_model():
     z2_ff_tf = (mz2_ff.max(dim=-1)[0] - mz2_ff.min(dim=-1)[0]) / (
         mz2_ff.max(dim=-1)[0] + mz2_ff.min(dim=-1)[0]
     )
-
 
     # compute 2D latent model properties of tuning curves and TI to latent space
     z_d = 2
@@ -433,7 +420,10 @@ def best_model():
             lower, mean, upper = [cs_.cpu().numpy() for cs_ in avgs]
 
             ffs = utils.signal.percentiles_from_samples(
-                ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
+                ff,
+                percentiles=[0.05, 0.5, 0.95],
+                smooth_length=5,
+                padding_mode="replicate",
             )
             fflower, ffmean, ffupper = [cs_.cpu().numpy() for cs_ in ffs]
 
@@ -471,7 +461,9 @@ def best_model():
                 model_utils.compute_P(full_model, covariates, [n], MC=100).mean(0).cpu()
             )
             avg = (x_counts[None, :] * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
-            var = (x_counts[None, :] ** 2 * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
+            var = (
+                (x_counts[None, :] ** 2 * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
+            )
             xcvar = var - avg**2
 
             field_zz.append(avg)
@@ -480,11 +472,9 @@ def best_model():
         field_zz = np.stack(field_zz)
         ff_zz = np.stack(ff_zz)
 
-
     # KS framework for latent models, including Fisher Z scores
     CV = [2, 5, 8]
     bn = 40
-
 
     ### KS test ###
     Qq = []
@@ -495,7 +485,9 @@ def best_model():
     N = len(pick_neuron)
     for kcv in CV:
         for en, mode in enumerate(modes):
-            cvdata = model_utils.get_cv_sets(mode, [kcv], 3000, rc_t, resamples, rcov)[0]
+            cvdata = model_utils.get_cv_sets(mode, [kcv], 3000, rc_t, resamples, rcov)[
+                0
+            ]
             _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
             cv_set = (ftrain, fcov, vtrain, vcov)
             time_steps = ftrain.shape[-1]
@@ -549,14 +541,12 @@ def best_model():
             R.append(r)
             Rp.append(r_p)
 
-
     fisher_z = []
     fisher_q = []
     for en, r in enumerate(R):
         fz = 0.5 * np.log((1 + r) / (1 - r)) * np.sqrt(time_steps - 3)
         fisher_z.append(fz)
         fisher_q.append(utils.stats.Z_to_q(fz))
-
 
     q_DS_ = []
     T_DS_ = []
@@ -572,7 +562,6 @@ def best_model():
             Z_DS = T_DS / np.sqrt(2 / (qq.shape[0] - 1))
             q_DS_.append(utils.stats.Z_to_q(Z_DS))
 
-
     fisher_z = np.array(fisher_z).reshape(len(CV), len(Ms), -1)
     fisher_q = np.array(fisher_q).reshape(len(CV), len(Ms), -1)
 
@@ -585,18 +574,18 @@ def best_model():
     T_DS_ = np.array(T_DS_).reshape(len(CV), len(Ms), len(pick_neuron), -1)
     T_KS_ = np.array(T_KS_).reshape(len(CV), len(Ms), len(pick_neuron), -1)
 
-
     T_KS_fishq = []
     p_KS_fishq = []
     for q in fisher_q:
         for qq in q:
-            _, T_KS, _, _, _, p_KS = utils.stats.KS_statistics(qq, alpha=0.05, alpha_s=0.05)
+            _, T_KS, _, _, _, p_KS = utils.stats.KS_statistics(
+                qq, alpha=0.05, alpha_s=0.05
+            )
             T_KS_fishq.append(T_KS)
             p_KS_fishq.append(p_KS)
 
     T_KS_fishq = np.array(T_KS_fishq).reshape(len(CV), len(Ms))
     p_KS_fishq = np.array(p_KS_fishq).reshape(len(CV), len(Ms))
-
 
     T_KS_ks = []
     p_KS_ks = []
@@ -611,7 +600,6 @@ def best_model():
 
     T_KS_ks = np.array(T_KS_ks).reshape(len(CV), len(Ms), len(pick_neuron))
     p_KS_ks = np.array(p_KS_ks).reshape(len(CV), len(Ms), len(pick_neuron))
-
 
     # delayed noise or spatiotemporal correlations
     NN = len(pick_neuron)
@@ -635,7 +623,7 @@ def best_model():
 
     bestmodel_dict = {
         X_c,
-        X_s,  
+        X_s,
         z_tau,
         pref_hd,
         grid_size_zz,
@@ -668,7 +656,7 @@ def best_model():
     }
     return bestmodel_dict
 
-                    
+
 def covariates_stats():
     # compute timescales for input dimensions from ACG
     delays = 5000
@@ -692,7 +680,6 @@ def covariates_stats():
             acg[d] = ((A - A.mean()) * (B - B.mean())).mean() / A.std() / B.std()
         acg_rc.append(acg)
 
-
     acg_z = []
     for rc in X_c.T:
         acg = np.empty(delays)
@@ -702,7 +689,6 @@ def covariates_stats():
             acg[d] = ((A - A.mean()) * (B - B.mean())).mean() / A.std() / B.std()
         acg_z.append(acg)
 
-
     timescales = []
 
     for d in range(len(rcov) - 1):
@@ -710,69 +696,72 @@ def covariates_stats():
 
     for d in range(X_c.shape[-1]):
         timescales.append(np.where(acg_z[d] < np.exp(-1))[0][0] * tbin)
-        
-        
+
     covariates_dict = {
-        'timescales': timescales,
-        'acg_rc': acg_rc,
-        'acg_z': acg_z,
-        't_lengths': t_lengths,
+        "timescales": timescales,
+        "acg_rc": acg_rc,
+        "acg_z": acg_z,
+        "t_lengths": t_lengths,
     }
     return covariates_dict
 
-    
-    
+
 def main():
     ### parser ###
-    parser = argparse.ArgumentParser(usage="%(prog)s [OPTION] [FILE]...", 
-                                     description="Analysis of th1 regression models.")
+    parser = argparse.ArgumentParser(
+        usage="%(prog)s [OPTION] [FILE]...",
+        description="Analysis of th1 regression models.",
+    )
     parser.add_argument(
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
-    
+
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
-    
+
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
-    
+
     args = parser.parse_args()
-    
+
     ### setup ###
     save_dir = args.savedir
     data_path = args.datadir
-    
+
     if args.cpu:
         dev = "cpu"
     else:
         dev = nprb.inference.get_device(gpu=args.gpu)
-        
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    
+
     ### names ###
     nc_config_names = [
-        'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
-        'th1_U-el-3_svgp-72_X[hd-omega-speed-x-y-time]_Z[R1]_40K11_0d0_10f', 
-        'th1_U-el-3_svgp-80_X[hd-omega-speed-x-y-time]_Z[R2]_40K11_0d0_10f', 
-        'th1_U-el-3_svgp-88_X[hd-omega-speed-x-y-time]_Z[R3]_40K11_0d0_10f', 
-        'th1_U-el-3_svgp-96_X[hd-omega-speed-x-y-time]_Z[R4]_40K11_0d0_10f', 
+        "th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f",
+        "th1_U-el-3_svgp-72_X[hd-omega-speed-x-y-time]_Z[R1]_40K11_0d0_10f",
+        "th1_U-el-3_svgp-80_X[hd-omega-speed-x-y-time]_Z[R2]_40K11_0d0_10f",
+        "th1_U-el-3_svgp-88_X[hd-omega-speed-x-y-time]_Z[R3]_40K11_0d0_10f",
+        "th1_U-el-3_svgp-96_X[hd-omega-speed-x-y-time]_Z[R4]_40K11_0d0_10f",
     ]
-    
-    
+
     ### analysis ###
     variability_dict = variability_stats()
     noisecorr_dict = noise_correlations()
     bestmodel_dict = best_model()
     covariates_dict = covariates_stats()
-    
+
     ### export ###
     data_run = {
-        'variability': variability_dict, 
-        'noise_correlations': noisecorr_dict, 
-        'best_model': bestmodel_dict, 
-        'covariates': covariates_dict, 
+        "variability": variability_dict,
+        "noise_correlations": noisecorr_dict,
+        "best_model": bestmodel_dict,
+        "covariates": covariates_dict,
     }
 
     pickle.dump(data_run, open("./saves/th1_NC.p", "wb"))
+
+
+if __name__ == "__main__":
+    main()

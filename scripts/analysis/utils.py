@@ -11,7 +11,7 @@ from neuroprob import utils
 
 
 ### UCM ###
-def marginalized_P(
+def marginalized_UCM_P_count(
     full_model, eval_points, eval_dims, rcov, bs, use_neuron, MC=100, skip=1
 ):
     """
@@ -84,125 +84,6 @@ def get_q_Z(P, spike_binned, deq_noise=None):
     Z = utils.stats.q_to_Z(quantiles)
     return quantiles, Z
 
-
-def compute_count_stats(
-    modelfit,
-    spktrain,
-    behav_list,
-    neuron,
-    traj_len=None,
-    traj_spikes=None,
-    start=0,
-    T=100000,
-    bs=5000,
-    n_samp=1000,
-):
-    """
-    Compute the dispersion statistics for the count model
-
-    :param string mode: *single* mode refers to computing separate single neuron quantities, *population* mode
-                        refers to computing over a population indicated by neurons, *peer* mode involves the
-                        peer predictability i.e. conditioning on all other neurons given a subset
-    """
-    mapping = modelfit.mapping
-    likelihood = modelfit.likelihood
-    tbin = modelfit.likelihood.tbin
-
-    N = int(np.ceil(T / bs))
-    rate_model = []
-    shape_model = []
-    spktrain = spktrain[:, start : start + T]
-    behav_list = [b[start : start + T] for b in behav_list]
-
-    for k in range(N):
-        covariates_ = [torchb[k * bs : (k + 1) * bs] for b in behav_list]
-        ospktrain = spktrain[None, ...]
-
-        rate = posterior_rate(
-            mapping, likelihood, covariates, MC, F_dims, trials=1, percentiles=[0.5]
-        )  # glm.mapping.eval_rate(covariates_, neuron, n_samp=1000)
-        rate_model += [rate[0, ...]]
-
-        if likelihood.dispersion_mapping is not None:
-            cov = mapping.to_XZ(covariates_, trials=1)
-            disp = likelihood.sample_dispersion(cov, n_samp, neuron)
-            shape_model += [disp[0, ...]]
-
-    rate_model = np.concatenate(rate_model, axis=1)
-    if count_model and glm.likelihood.dispersion_mapping is not None:
-        shape_model = np.concatenate(shape_model, axis=1)
-
-    if type(likelihood) == nprb.likelihoods.Poisson:
-        shape_model = None
-        f_p = lambda c, avg, shape, t: utils.stats.poiss_count_prob(c, avg, t)
-
-    elif type(likelihood) == nprb.likelihoods.Negative_binomial:
-        shape_model = (
-            glm.likelihood.r_inv.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        )
-        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.COM_Poisson:
-        shape_model = glm.likelihood.nu.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.ZI_Poisson:
-        shape_model = (
-            glm.likelihood.alpha.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        )
-        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hNegative_binomial:
-        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hCOM_Poisson:
-        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hZI_Poisson:
-        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
-
-    else:
-        raise ValueError
-
-    m_f = lambda x: x
-
-    if shape_model is not None:
-        assert traj_len == 1
-    if traj_len is not None:
-        traj_lens = (T // traj_len) * [traj_len]
-
-    q_ = []
-    for k, ne in enumerate(neuron):
-        if traj_spikes is not None:
-            avg_spikecnt = np.cumsum(rate_model[k] * tbin)
-            nc = 1
-            traj_len = 0
-            for tt in range(T):
-                if avg_spikecnt >= traj_spikes * nc:
-                    nc += 1
-                    traj_lens.append(traj_len)
-                    traj_len = 0
-                    continue
-                traj_len += 1
-
-        if shape_model is not None:
-            sh = shape_model[k]
-            spktr = spktrain[ne]
-            rm = rate_model[k]
-        else:
-            sh = None
-            spktr = []
-            rm = []
-            start = np.cumsum(traj_lens)
-            for tt, traj_len in enumerate(traj_lens):
-                spktr.append(spktrain[ne][start[tt] : start[tt] + traj_len].sum())
-                rm.append(rate_model[k][start[tt] : start[tt] + traj_len].sum())
-            spktr = np.array(spktr)
-            rm = np.array(rm)
-
-        q_.append(utils.stats.count_KS_method(f_p, m_f, tbin, spktr, rm, shape=sh))
-
-    return q_
 
 
 # metrics
