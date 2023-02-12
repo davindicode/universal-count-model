@@ -653,19 +653,20 @@ def latent_observed_tuning(fig):
             
             
 def main():
-    if not os.path.exists('./output'):
-        os.makedirs('./output')
+    save_dir = '../output/'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     plt.style.use(['paper.mplstyle'])
     
     # load
-    datarun = pickle.load(open('./saves/hCMP_results.p', 'rb'))
+    datarun = pickle.load(open(save_dir + 'hCMP_results.p', 'rb'))
 
     regression_hCMP = datarun['regression']
     dispersion_hCMP = datarun['dispersion']
     latent_dict_hCMP = datarun['latent']
 
 
-    datarun = pickle.load(open('./saves/modIP_results.p', 'rb'))
+    datarun = pickle.load(open(save_dir + 'modIP_results.p', 'rb'))
 
     latent_dict_modIP = datarun['latent']
     correlations_modIP = datarun['correlations']
@@ -707,7 +708,7 @@ def main():
     noise_correlations(fig)
     latent_observed_tuning(fig)
 
-    plt.savefig('output/plot_synthetic.pdf')
+    plt.savefig(save_dir + 'plot_synthetic.pdf')
 
     
     

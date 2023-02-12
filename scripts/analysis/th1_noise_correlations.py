@@ -11,12 +11,12 @@ top_y = rcov[4].max()
 pick_neuron = list(range(neurons))
 
 
-modes = [
-    ("GP", "U", "hd_w_s_pos_t", 64, "identity", 3, [], False, 10, False, "ew"),
-    ("GP", "U", "hd_w_s_pos_t_R1", 72, "identity", 3, [6], False, 10, False, "ew"),
-    ("GP", "U", "hd_w_s_pos_t_R2", 80, "identity", 3, [6], False, 10, False, "ew"),
-    ("GP", "U", "hd_w_s_pos_t_R3", 88, "identity", 3, [6], False, 10, False, "ew"),
-    ("GP", "U", "hd_w_s_pos_t_R4", 96, "identity", 3, [6], False, 10, False, "ew"),
+nc_config_names = [
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-72_X[hd-omega-speed-x-y-time]_Z[R1]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-80_X[hd-omega-speed-x-y-time]_Z[R2]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-88_X[hd-omega-speed-x-y-time]_Z[R3]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-96_X[hd-omega-speed-x-y-time]_Z[R4]_40K11_0d0_10f', 
 ]
 
 

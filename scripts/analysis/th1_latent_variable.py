@@ -6,10 +6,10 @@ max_count = int(rc_t.max())
 rhd_t = rcov_lvm[0]
 
 
-modes = [
-    ("GP", "U", "T1", 8, "identity", 3, [0], False, 10, False, "ew"),
-    ("GP", "IP", "T1", 8, "exp", 1, [0], False, 10, False, "ew"),
-    ("GP", "hNB", "T1", 8, "exp", 1, [0], False, 10, False, "ew"),
+lat_config_names = [
+    'th1_IP-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
+    'th1_hNB-exp_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
+    'th1_U-el-3_svgp-8_X[]_Z[T1]_100K25_0d0_10f-1', 
 ]
 
 

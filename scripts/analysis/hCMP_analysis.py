@@ -26,13 +26,13 @@ import utils
 
 
 
-def regression():
+def regression(config_names):
     ### cross-validation of regression models ###
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000  # batch size for cross-validation
 
     RG_cv_ll = []
-    for name in reg_config_names:
+    for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
 
@@ -76,7 +76,7 @@ def regression():
     ### compute UCM SCDs ###
     x_counts = torch.arange(max_count+1)
 
-
+    U_gp_config_name = config_names[2] + '-1'
     batch_info = 5000
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
@@ -86,7 +86,6 @@ def regression():
         batch_info,
         device,
     )
-
 
     covariates = [torch.from_numpy(hd)]
 
@@ -149,7 +148,7 @@ def regression():
 
 
 
-def KS_stats():
+def KS_stats(config_names):
     ### KS framework ###
     Qq_rg = []
     Zz_rg = []
@@ -158,7 +157,7 @@ def KS_stats():
     batch_info = 5000  # batch size for cross-validation
 
     RG_cv_ll = []
-    for name in reg_config_names:
+    for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
 
@@ -228,7 +227,7 @@ def KS_stats():
 
 
 
-def latent_variable():
+def latent_variable(config_names):
     ### aligning trajectory and computing RMS for different models ###
     cvK = 90
     CV = [15, 30, 45, 60, 75]
@@ -236,7 +235,7 @@ def latent_variable():
     batch_info = 5000
 
     RMS_cv = []
-    for name in lat_config_names:
+    for name in config_names:
         config_name = name + '-1'
 
         full_model, training_loss, fit_dict, val_dict = models.load_model(
@@ -315,9 +314,7 @@ def latent_variable():
 
     LVM_cv_ll = np.array(LVM_cv_ll).reshape(len(lat_config_names), len(kcvs), len(val_neuron))
 
-
-
-
+    
     ### compute tuning curves and latent trajectory of latent UCM ###
     lat_t_ = []
     lat_std_ = []
@@ -332,10 +329,16 @@ def latent_variable():
     comp_ff = []
     comp_var = []
 
-    for mode in modes[-2:]:
-        cvdata = model_utils.get_cv_sets(mode, [-1], 5000, rc_t, resamples, rcov)[0]
-        full_model = get_full_model(datatype, cvdata, resamples, rc_t, 100, 
-                                    mode, rcov, max_count, neurons)
+    for name in config_names[-2:]:
+        config_name = name + '-1'
+        
+        full_model, training_loss, fit_dict, val_dict = models.load_model(
+            config_name,
+            checkpoint_dir,
+            dataset_dict,
+            batch_info,
+            device,
+        )
 
         # predict latents
         X_loc, X_std = full_model.inputs.eval_XZ()
@@ -364,8 +367,7 @@ def latent_variable():
                                                     smooth_length=5, padding_mode='circular')
         comp_ff.append([cs_.cpu().numpy() for cs_ in ffs])
 
-
-
+        
     latent_dict = {
         'covariates_aligned': covariates_aligned, 
         'lat_t_': lat_t_, 
@@ -382,12 +384,13 @@ def latent_variable():
 
 
 def main():
-    dev = nprb.utils.pytorch.get_device(gpu=0)
-    if not os.path.exists('../output'):
-        os.makedirs('../output')
-    
+    save_dir = '../output/'
     data_path = '../../data/'
-
+    
+    dev = nprb.utils.pytorch.get_device(gpu=0)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
     # names
     reg_config_names = [
         'hCMP1_IP-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
@@ -395,10 +398,7 @@ def main():
         'hCMP1_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
         'hCMP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f', 
     ]
-
-    U_gp_config_name = 'hCMP1_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f-1'
-    U_ann_config_name = 'hCMP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f-1'
-
+    
     lat_config_names = [
         'hCMP1_IP-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
         'hCMP1_hNB-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
@@ -417,7 +417,7 @@ def main():
 
     ### analysis ###
     regression_dict = regression(reg_config_names)
-    dispersion_dict = KS_stats()
+    dispersion_dict = KS_stats(reg_config_names)
     latent_dict = latent_variable(lat_config_names)
 
     ### export ###
@@ -427,7 +427,7 @@ def main():
         'latent': latent_dict, 
     }
 
-    pickle.dump(data_run, open('./saves/hCMP_results.p', 'wb'))
+    pickle.dump(data_run, open(save_dir + 'hCMP_results.p', 'wb'))
 
     
     

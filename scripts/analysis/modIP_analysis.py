@@ -54,18 +54,17 @@ full_model, training_loss, fit_dict, val_dict = models.load_model(
 )
 
 
-def latent_variable():
+def latent_variable(config_names):
     # neuron subgroup likelihood CV
     beta = 0.0
     n_group = np.arange(5)
     val_neuron = [n_group, n_group+10, n_group+20, n_group+30, n_group+40]
     ncvx = 2
     kcvs = [2, 5, 8] # validation sets chosen in 10-fold split of data
-    Ms = modes[:3]
 
     batch_size = 5000
     cv_pll = []
-    for em, mode in enumerate(Ms):
+    for em, name in enumerate(config_names):
         for cvdata in model_utils.get_cv_sets(mode, kcvs, batch_size, rc_t, resamples, rcov):
             _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
             cv_set = (ftrain, fcov, vtrain, vcov)
@@ -80,8 +79,9 @@ def latent_variable():
                         mask = np.ones((neurons,), dtype=bool)
                         mask[v_neuron] = False
                         f_neuron = np.arange(neurons)[mask]
-                        ll = model_utils.LVM_pred_ll(full_model, mode[-5], mode[2], models.cov_used, cv_set, f_neuron, v_neuron, 
-                                                     beta=beta, beta_z=0.0, max_iters=3000)[0]
+                        ll = model_utils.LVM_pred_ll(
+                            full_model, mode[-5], mode[2], models.cov_used, cv_set, f_neuron, v_neuron, 
+                            beta=beta, beta_z=0.0, max_iters=3000)[0]
                         if ll < prev_ll:
                             prev_ll = ll
 
@@ -91,8 +91,9 @@ def latent_variable():
                 for v_neuron in val_neuron:
                     full_model = get_full_model(datatype, cvdata, resamples, rc_t, 100, 
                                                 mode, rcov, max_count, neurons)
-                    cv_pll.append(model_utils.RG_pred_ll(full_model, mode[2], models.cov_used, cv_set, bound='ELBO', 
-                                                         beta=beta, neuron_group=v_neuron, ll_mode='GH', ll_samples=100))
+                    cv_pll.append(model_utils.RG_pred_ll(
+                        full_model, mode[2], models.cov_used, cv_set, bound='ELBO', 
+                        beta=beta, neuron_group=v_neuron, ll_mode='GH', ll_samples=100))
 
 
     cv_pll = np.array(cv_pll).reshape(len(Ms), len(kcvs), len(val_neuron))
@@ -156,10 +157,12 @@ def latent_variable():
         'grate': grate, 
         'gFF': gFF, 
     }
+    
+    return latent_dict
 
 
 
-def KS_stats():
+def variability_stats(config_names):
     # KS framework
     Qq = []
     Zz = []
@@ -168,10 +171,9 @@ def KS_stats():
 
     batch_size = 5000
 
-    Ms = modes[:3]
     CV = [2, 5, 8]
     for kcv in CV:
-        for en, mode in enumerate(Ms):
+        for en, mode in enumerate(config_names):
             cvdata = model_utils.get_cv_sets(mode, [kcv], batch_size, rc_t, resamples, rcov)[0]
             _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
             time_steps = ftrain.shape[-1]
@@ -247,7 +249,31 @@ def KS_stats():
     T_DS_ = np.array(T_DS_).reshape(len(CV), len(Ms), -1)
     T_KS_ = np.array(T_KS_).reshape(len(CV), len(Ms), -1)
 
-    dispersion_dict = {
+    
+    # noise correlation structure
+    NN = len(use_neuron)
+    R_mat_Xp = np.zeros((NN, NN))
+    R_mat_X = np.zeros((NN, NN))
+    R_mat_XZ = np.zeros((NN, NN))
+    for a in range(len(R[0])):
+        n, m = model_utils.ind_to_pair(a, NN)
+        R_mat_Xp[n, m] = R[0][a]
+        R_mat_X[n, m] = R[1][a]
+        R_mat_XZ[n, m] = R[2][a]
+
+    # noise correlation structure
+    NN = len(use_neuron)
+    R_mat_Xp = np.zeros((NN, NN))
+    R_mat_X = np.zeros((NN, NN))
+    R_mat_XZ = np.zeros((NN, NN))
+    for a in range(len(R[0])):
+        n, m = model_utils.ind_to_pair(a, NN)
+        R_mat_Xp[n, m] = R[0][a]
+        R_mat_X[n, m] = R[1][a]
+        R_mat_XZ[n, m] = R[2][a]
+
+
+    variability_dict = {
         q_DS_, 
         T_DS_, 
         T_KS_, 
@@ -256,66 +282,57 @@ def KS_stats():
         fisher_q, 
         Qq, 
         Zz, 
-    }
-
-    
-    
-def correlations():
-    # noise correlation structure
-    NN = len(use_neuron)
-    R_mat_Xp = np.zeros((NN, NN))
-    R_mat_X = np.zeros((NN, NN))
-    R_mat_XZ = np.zeros((NN, NN))
-    for a in range(len(R[0])):
-        n, m = model_utils.ind_to_pair(a, NN)
-        R_mat_Xp[n, m] = R[0][a]
-        R_mat_X[n, m] = R[1][a]
-        R_mat_XZ[n, m] = R[2][a]
-
-    # noise correlation structure
-    NN = len(use_neuron)
-    R_mat_Xp = np.zeros((NN, NN))
-    R_mat_X = np.zeros((NN, NN))
-    R_mat_XZ = np.zeros((NN, NN))
-    for a in range(len(R[0])):
-        n, m = model_utils.ind_to_pair(a, NN)
-        R_mat_Xp[n, m] = R[0][a]
-        R_mat_X[n, m] = R[1][a]
-        R_mat_XZ[n, m] = R[2][a]
-
-
-    correlations_dict = {
         'R': R, 
         'Rp': Rp, 
         'R_mat_Xp': R_mat_Xp, 
         'R_mat_X': R_mat_X, 
         'R_mat_XZ': R_mat_XZ, 
     }
+    
+    return variability_dict
 
 
 
 def main():
-    dev = utils.pytorch.get_device(gpu=0)
-    if not os.path.exists('./saves'):
-        os.makedirs('./saves')
+    save_dir = '../output/'
+    data_path = '../../data/'
     
-    data_path = '../data/'
+    dev = utils.pytorch.get_device(gpu=0)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+        
+    # names
+    reg_config_names = [
+        'modIP1_IP-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_hNB-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_U-el-3_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K28_0d0_10f', 
+    ]
+    
+    lat_config_names = [
+        'modIP1_IP-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_hNB-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_U-el-3_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        'modIP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K28_0d0_10f', 
+    ]
+    
+    ### load dataset ###
     data_type = 'modIP1'
     bin_size = 1
-
-    ### load dataset ###
+    
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
     
     ### analysis ###
-
+    latent_dict = latent_variable()
+    variability_dict = variability_stats()
+    
     ### export ###
     data_run = {
-        'dispersion': dispersion_dict, 
-        'correlations': correlations_dict
-        'latent': latent_dict
+        'latent': latent_dict, 
+        'variability': variability_dict, 
     }
 
-    pickle.dump(data_run, open('./saves/modIP_results.p', 'wb'))
+    pickle.dump(data_run, open(save_dir + 'modIP_results.p', 'wb'))
     
     
     

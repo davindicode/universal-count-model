@@ -12,6 +12,30 @@ modes = [
     ("GP", "U", "hd_w_s_pos_t", 64, "identity", 3, [], False, 10, False, "qd"),
 ]
 
+subset_config_names = [
+    'th1_U-el-3_svgp-64_X[hd]_Z[]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-time]_Z[]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+]
+
+reg_config_names = [
+    'th1_IP-exp_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+    'th1_hNB-exp_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+]
+
+binnings = [20, 40, 100, 200, 500]
+binning_config_names = [
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_20K6_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_100K25_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_200K48_0d0_10f', 
+    'th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_500K25_0d0_10f', 
+]
+
+
+
+
 bn = 40
 rcov, neurons, tbin, resamples, rc_t, region_edge = HDC.get_dataset(
     session_id, phase, bn, "../scripts/data"
@@ -30,7 +54,9 @@ avg_models = []
 var_models = []
 ff_models = []
 
-binnings = [20, 40, 100, 200, 500]
+
+
+
 
 for bn in binnings:
 

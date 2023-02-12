@@ -3,7 +3,7 @@
 
 ## Overview
 
-This is the code repository for this [paper](https://www.biorxiv.org/content/10.1101/2021.06.27.450063v2).
+This is the code repository for this [paper](https://proceedings.neurips.cc/paper/2021/hash/6f5216f8d89b086c18298e043bfe48ed-Abstract.html).
 Models are implemented in Python with dependencies on libraries listed below at the end.
 We also include a neural data analysis library called "neuroprob" that was written for constructing scalable neural encoding models for spike count data using a modern deep learning framework (see ```lib/``` for more details).
 The baseline models, along with the Universal Count Model (UCM) proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.

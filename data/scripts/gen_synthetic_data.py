@@ -171,7 +171,7 @@ def main():
     covariates = np.stack([hd_t, a_t], axis=1)
     model = IP_bumps(rng, neurons)
     rate = model(covariates)
-    syn_train = rng.poisson(rate * sample_bin)[0, ...].astype(float)
+    syn_train = rng.poisson(rate * sample_bin).astype(float)
 
     # ground truth tuning
     steps = 100

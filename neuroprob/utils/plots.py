@@ -1,3 +1,4 @@
+import daft
 import matplotlib.colors as col
 import matplotlib.path
 import matplotlib.pyplot as plt

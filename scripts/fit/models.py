@@ -991,7 +991,7 @@ def train_model(dev, parser_args, dataset_dict):
                 opt_lr_dict = {"default": parser_args.lr}
 
                 # set learning rates for special cases
-                if z_mode == "T1":
+                if z_mode == "T1" and model_dict["map_mode"][:4] == "svgp":
                     opt_lr_dict["mapping.kernel.kern1._lengthscale"] = parser_args.lr_2
                 for z_dim in full_model.input_group.latent_dims:
                     opt_lr_dict[

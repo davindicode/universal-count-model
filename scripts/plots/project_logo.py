@@ -1,15 +1,45 @@
 import numpy as np
+import scipy.special as sps
+import torch
+
 import matplotlib.pyplot as plt
 
 import os
     
 import sys
-sys.path.append("..")
+sys.path.append("../..")
 from neuroprob import utils
 
 
 
 def logo(fig):
+    # probability model and toy data for visualization
+    K = 11
+    MC = 1000
+    beta = 0.1
+
+    X = np.arange(100)
+
+    mu = X*0.05
+    std = 0.5 / (X*0.01 + 1)
+
+    s = np.log(np.exp( np.random.randn(MC)[:, None, None]*std[None, None, :] + mu[None, None, :] ) + 1)
+
+    # MC, K, X
+    a = np.exp(-s + np.log(s)*np.arange(K)[None, :, None] - \
+               sps.gammaln(np.arange(1, K+1)[None, :, None]))
+    P = a / a.sum(1, keepdims=True)
+
+
+    m = (np.arange(K)[None, :, None]*P).mean(1)
+    s = ((np.arange(K)**2)[None, :, None]*P).mean(1)
+    v = s - m**2
+    ff = v/m
+
+    cov = X*0.01
+
+    # count distributions with uncertainties
+    pP_l, pP_m, pP_u = utils.stats.percentiles_from_samples(torch.from_numpy(P).float())
     
     # scatters and box
     widths = [1]
@@ -38,8 +68,6 @@ def logo(fig):
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
 
-
-
     # histograms
     X = 0.25
     Y = 0.25
@@ -52,7 +80,6 @@ def logo(fig):
             spec = fig.add_gridspec(ncols=len(widths), nrows=len(heights), width_ratios=widths, hspace=0.0, 
                                     height_ratios=heights, top=0.38+Y*l, bottom=0.15+Y*l, 
                                     left=0.15+X*k, right=0.38+X*k)
-
 
             ax = fig.add_subplot(spec[0, 0])
 
@@ -73,7 +100,6 @@ def logo(fig):
                 ax.fill_between(XX_, YY_l, 
                     YY_u, color=line.get_color(), alpha=fac*0.3)
 
-
             ax.set_xlim([-0.5, K-1+.5])
             ax.set_ylim(0)
             ax.set_yticks([])
@@ -89,8 +115,9 @@ def logo(fig):
                 
                 
 def main():
-    if not os.path.exists('./output'):
-        os.makedirs('./output')
+    save_dir = '../output/'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     plt.style.use(['paper.mplstyle'])
     
     # plot
@@ -98,7 +125,7 @@ def main():
 
     logo(fig)
     
-    plt.savefig('output/logo.png', dpi=100)
+    plt.savefig(save_dir + 'logo.png', dpi=100)
     
     
     

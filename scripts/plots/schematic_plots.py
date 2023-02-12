@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.special as sps
-
 import torch
 
 import matplotlib.pyplot as plt
@@ -9,7 +8,7 @@ from matplotlib import patches
 import os
     
 import sys
-sys.path.append("..")
+sys.path.append("../..")
 from neuroprob import utils
 
 
@@ -88,7 +87,6 @@ def count_dists(fig):
 
     s = np.log(np.exp( np.random.randn(MC)[:, None, None]*std[None, None, :] + mu[None, None, :] ) + 1)
 
-
     # MC, K, X
     a = np.exp(-s + np.log(s)*np.arange(K)[None, :, None] - \
                sps.gammaln(np.arange(1, K+1)[None, :, None]))
@@ -102,30 +100,8 @@ def count_dists(fig):
 
     cov = X*0.01
 
-
-    # tuning curves with uncertainties
-    m_l, m_m, m_u = utils.stats.percentiles_from_samples(torch.from_numpy(m).float())
-
-    ff_l, ff_m, ff_u = utils.stats.percentiles_from_samples(torch.from_numpy(ff).float())
-
+    # count distributions with uncertainties
     pP_l, pP_m, pP_u = utils.stats.percentiles_from_samples(torch.from_numpy(P).float())
-
-
-    # 2D heatmaps
-    grid_n = [50, 50]
-    grid_size = [[0, 1], [0, 1]]
-    grid_mesh = np.meshgrid(
-        np.linspace(grid_size[0][0], grid_size[0][1], grid_n[0]), 
-        np.linspace(grid_size[1][0], grid_size[1][1], grid_n[1]), 
-    )
-
-    mu = np.array([0.6, 0.6])[:, None, None]
-    mean_field = 5*np.exp(-((grid_mesh-mu)**2).sum(0)*10)
-
-    mu = np.array([0.4, 0.4])[:, None, None]
-    ff_field = 1.5*np.exp(-((grid_mesh-mu)**2).sum(0)*2)
-
-
 
 
     widths = [1]
@@ -176,7 +152,6 @@ def count_dists(fig):
                                     height_ratios=heights, top=-0.225+Y*l, bottom=-0.425+Y*l, 
                                     left=.45+X*k+Xoff, right=.55+X*k+Xoff)
 
-
             ax = fig.add_subplot(spec[0, 0])
 
             xx = xxs[k+3*l]
@@ -205,6 +180,12 @@ def count_dists(fig):
                 
                 
 def latent_traj(fig):
+    T = 6001
+    ts = np.arange(T)*0.001
+
+    Z_mean = np.sin(ts*3*(1+np.exp(-(ts-ts[T//2])**2)))*np.cos(ts/2.6)
+    Z_s = np.ones_like(ts)*0.3
+    
     X = -0.02
     widths = [1]
     heights = [1]
@@ -213,12 +194,6 @@ def latent_traj(fig):
                             left=0.415+X, right=1.02+X, bottom=0.615, top=0.915)
 
     ax = fig.add_subplot(spec[0, 0])
-    T = 6001
-    ts = np.arange(T)*0.001
-
-    Z_mean = np.sin(ts*3*(1+np.exp(-(ts-ts[T//2])**2)))*np.cos(ts/2.6)
-    Z_s = np.ones_like(ts)*0.3
-
     line, = ax.plot(ts, Z_mean[:T], color='tab:green', alpha=1.0)
     ax.fill_between(ts, Z_mean[:T]-Z_s[:T], 
         Z_mean[:T]+Z_s[:T], color=line.get_color(), alpha=0.3)
@@ -230,8 +205,19 @@ def latent_traj(fig):
     
     
     
-def mean_tunings(fig):
+def tunings(fig):
+    # 2D heatmaps
+    grid_n = [50, 50]
+    grid_size = [[0, 1], [0, 1]]
+    grid_mesh = np.meshgrid(
+        np.linspace(grid_size[0][0], grid_size[0][1], grid_n[0]), 
+        np.linspace(grid_size[1][0], grid_size[1][1], grid_n[1]), 
+    )
+
     # mean tunings
+    mu = np.array([0.6, 0.6])[:, None, None]
+    mean_field = 5*np.exp(-((grid_mesh-mu)**2).sum(0)*10)
+    
     X = 0.05
     Y = 0.0
     widths = [1, 0.6]
@@ -312,7 +298,6 @@ def mean_tunings(fig):
     
     
     
-def FF_tunings(fig):
     white = '#ffffff'
     black = '#000000'
     red = '#ff0000'
@@ -320,6 +305,9 @@ def FF_tunings(fig):
     weight_map = utils.plots.make_cmap([blue, white, red], 'weight_map')
 
     # FF tunings
+    mu = np.array([0.4, 0.4])[:, None, None]
+    ff_field = 1.5*np.exp(-((grid_mesh-mu)**2).sum(0)*2)
+    
     X = 0.05
     Y = -0.62
     widths = [1, 0.6]
@@ -411,8 +399,9 @@ def FF_tunings(fig):
     
     
 def main():
-    if not os.path.exists('./output'):
-        os.makedirs('./output')
+    save_dir = '../output/'
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     plt.style.use(['paper.mplstyle'])
     
     # plot
@@ -422,9 +411,7 @@ def main():
     graphical_model(fig, 0.02, 0.0)
     count_dists(fig)
     latent_traj(fig)
-
-    mean_tunings(fig)
-    FF_tunings(fig)
+    tunings(fig)
 
     ### connections ###
     widths = [1]
@@ -447,7 +434,7 @@ def main():
                              connectionstyle="arc3,rad={}".format(0), **kw)
     ax.add_patch(a)
 
-    plt.savefig('output/plot_schem.pdf')
+    plt.savefig(save_dir + 'plot_schem.pdf')
     
     
     
