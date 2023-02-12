@@ -1,22 +1,13 @@
+import argparse
 import torch
-import torch.nn as nn
-from torch.nn.parameter import Parameter
-import torch.nn.functional as F
-import torch.optim as optim
-
-
-import scipy.special as sps
-import scipy.stats as scstats
 import numpy as np
-
 import pickle
 
 import os
-    
-    
+
 import sys
 
-sys.path.append("..") # access to library
+sys.path.append("../..") # access to library
 import neuroprob as nprb
 
 sys.path.append("../scripts") # access to scripts
@@ -97,10 +88,12 @@ def regression(config_names):
     hd = [20, 50, 80]
     for hd_ in hd:
         for n in range(len(use_neuron)):
-            ref_prob.append([utils.stats.cmp_count_prob(xc, grate[n, hd_], gdisp[n, hd_], tbin) for xc in x_counts.numpy()])
+            ref_prob.append([utils.stats.cmp_count_prob(
+                xc, grate[n, hd_], gdisp[n, hd_], tbin) for xc in x_counts.numpy()])
     ref_prob = np.array(ref_prob).reshape(len(hd), len(use_neuron), -1)
 
-    cs = nprb.utils.stats.percentiles_from_samples(P_mc[..., hd, :], percentiles=[0.05, 0.5, 0.95], smooth_length=1)
+    cs = nprb.utils.stats.percentiles_from_samples(
+        P_mc[..., hd, :], percentiles=[0.05, 0.5, 0.95], smooth_length=1)
     clower, cmean, cupper = [cs_.cpu().numpy() for cs_ in cs]
 
     # tuning curves
@@ -126,7 +119,6 @@ def regression(config_names):
         'P_rg': P_rg, 
         'gmean': gmean, 
         'gFF': gFF, 
-        'gvar': gvar, 
         'ref_prob': ref_prob, 
         'clower': clower, 
         'cmean': cmean, 
@@ -137,9 +129,6 @@ def regression(config_names):
         'fflower': fflower, 
         'ffmean': ffmean, 
         'ffupper': ffupper, 
-    #     'varlower': varlower, 
-    #     'varmean': varmean, 
-    #     'varupper': varupper, 
         'RG_cv_ll': RG_cv_ll, 
     }
     
@@ -267,8 +256,6 @@ def latent_variable(config_names):
 
     RMS_cv = np.array(RMS_cv).reshape(len(lat_config_names), len(CV))
 
-
-
     # neuron subgroup likelihood CV for latent models
     seeds = [123, 1234, 12345]
 
@@ -384,26 +371,50 @@ def latent_variable(config_names):
 
 
 def main():
-    save_dir = '../output/'
-    data_path = '../../data/'
+    ### parser ###
+    parser = argparse.ArgumentParser(usage="%(prog)s [OPTION] [FILE]...", 
+                                     description="Analysis of heteroscedastic CMP dataset.")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
+    )
+
+    parser.add_argument("--dataseed", default=1, type=int)
+    parser.add_argument("--savedir", default="../output/", type=str)
+    parser.add_argument("--datadir", default="../../data/", type=str)
     
-    dev = nprb.utils.pytorch.get_device(gpu=0)
+    parser.add_argument("--gpu", default=0, type=int)
+    parser.add_argument("--cpu", dest="cpu", action="store_true")
+    parser.set_defaults(cpu=False)
+    
+    args = parser.parse_args()
+    
+    ### setup ###
+    save_dir = args.savedir
+    data_path = args.datadir
+    
+    if args.cpu:
+        dev = "cpu"
+    else:
+        dev = nprb.inference.get_device(gpu=args.gpu)
+        
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     
-    # names
+    ### names ###
+    dataset_name = 'hCMP{}'.format(args.dataseed)
+    
     reg_config_names = [
-        'hCMP1_IP-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
-        'hCMP1_hNB-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
-        'hCMP1_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
-        'hCMP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f', 
+        dataset_name + '_IP-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+        dataset_name + '_hNB-exp_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+        dataset_name + '_U-el-3_svgp-8_X[hd]_Z[]_1K18_0d0_10f', 
+        dataset_name + '_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K18_0d0_10f', 
     ]
     
     lat_config_names = [
-        'hCMP1_IP-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
-        'hCMP1_hNB-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
-        'hCMP1_U-el-3_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
-        'hCMP1_U-el-3_ffnn-50-50-100_X[]_Z[T1]_1K18_0d0_10f', 
+        dataset_name + '_IP-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
+        dataset_name + '_hNB-exp_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
+        dataset_name + '_U-el-3_svgp-8_X[]_Z[T1]_1K18_0d0_10f', 
+        dataset_name + '_U-el-3_ffnn-50-50-100_X[]_Z[T1]_1K18_0d0_10f', 
     ]
 
 

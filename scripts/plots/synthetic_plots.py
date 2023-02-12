@@ -675,7 +675,6 @@ def main():
     fig = plt.figure(figsize=(8, 2))
     fig.text(-0.04, 1.1, 'A', fontsize=15, fontweight='bold')
     fig.text(-0.04, -0.95, 'B', fontsize=15, fontweight='bold')
-    #fig.text(0.0, -1.75, 'C', fontsize=15)
 
 
     rhd_t = rcov[0]
@@ -698,7 +697,6 @@ def main():
     yy = np.linspace(0, 1., 10)
     ax.plot(1.*np.ones_like(yy), yy, 'k', linewidth=.9)
     ax.axis('off')
-
 
     ### LVM ###
     latent_variables(fig)

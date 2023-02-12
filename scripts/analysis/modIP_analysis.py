@@ -1,11 +1,5 @@
+import argparse
 import torch
-import torch.nn as nn
-from torch.nn.parameter import Parameter
-import torch.nn.functional as F
-import torch.optim as optim
-
-
-import scipy.special as sps
 import scipy.stats as scstats
 import numpy as np
 
@@ -37,9 +31,6 @@ covariates = [rhd_t[None, :, None].repeat(trials, axis=0),
               ra_t[None, :, None].repeat(trials, axis=0)]
 
 
-# modes = [('GP', 'IP', 'hd', 8, 'exp', 1, [], False, 10, False, 'ew'), 
-#          ('GP', 'U', 'hd', 8, 'identity', 3, [], False, 10, False, 'ew'),
-#          ('GP', 'U', 'hdxR1', 16, 'identity', 3, [1], False, 10, False, 'ew')]
 checkpoint_dir = '../scripts/checkpoint/'
 config_name = 'th1_U-el-4_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f-1'
 batch_info = 500
@@ -54,7 +45,7 @@ full_model, training_loss, fit_dict, val_dict = models.load_model(
 )
 
 
-def latent_variable(config_names):
+def latent_observed(config_names):
     # neuron subgroup likelihood CV
     beta = 0.0
     n_group = np.arange(5)
@@ -294,26 +285,42 @@ def variability_stats(config_names):
 
 
 def main():
-    save_dir = '../output/'
-    data_path = '../../data/'
+    ### parser ###
+    parser = argparse.ArgumentParser(usage="%(prog)s [OPTION] [FILE]...", 
+                                     description="Analysis of modulated Poisson dataset.")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
+    )
+
+    parser.add_argument("--dataseed", default=1, type=int)
+    parser.add_argument("--savedir", default="../output/", type=str)
+    parser.add_argument("--datadir", default="../../data/", type=str)
     
-    dev = utils.pytorch.get_device(gpu=0)
+    parser.add_argument("--gpu", default=0, type=int)
+    parser.add_argument("--cpu", dest="cpu", action="store_true")
+    parser.set_defaults(cpu=False)
+    
+    args = parser.parse_args()
+    
+    ### setup ###
+    save_dir = args.savedir
+    data_path = args.datadir
+    
+    if args.cpu:
+        dev = "cpu"
+    else:
+        dev = nprb.inference.get_device(gpu=args.gpu)
+        
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-        
-    # names
-    reg_config_names = [
-        'modIP1_IP-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_hNB-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_U-el-3_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K28_0d0_10f', 
-    ]
     
-    lat_config_names = [
-        'modIP1_IP-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_hNB-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_U-el-3_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
-        'modIP1_U-el-3_ffnn-50-50-100_X[hd]_Z[]_1K28_0d0_10f', 
+    ### names ###
+    dataset_name = 'modIP{}'.format(args.dataseed)
+    
+    nc_config_names = [
+        dataset_name + '_IP-exp_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        dataset_name + '_U-el-3_svgp-8_X[hd]_Z[]_1K28_0d0_10f', 
+        dataset_name + '_U-el-3_svgp-16_X[hd]_Z[R1]_1K28_0d0_10f', 
     ]
     
     ### load dataset ###
@@ -323,7 +330,7 @@ def main():
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
     
     ### analysis ###
-    latent_dict = latent_variable()
+    latent_observed_dict = latent_observed()
     variability_dict = variability_stats()
     
     ### export ###
