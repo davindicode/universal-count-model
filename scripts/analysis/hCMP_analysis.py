@@ -34,7 +34,7 @@ def regression(
         for kcv in kcvs:
             config_name = name + str(kcv)
 
-            full_model, training_loss, fit_dict, val_dict = models.load_model(
+            full_model, _, _, val_dict = models.load_model(
                 config_name,
                 checkpoint_dir,
                 dataset_dict,
@@ -75,7 +75,7 @@ def regression(
     U_gp_config_name = config_names[2] + "-1"
     batch_info = 5000
 
-    full_model, training_loss, fit_dict, val_dict = models.load_model(
+    full_model, _, _, _ = models.load_model(
         U_gp_config_name,
         checkpoint_dir,
         dataset_dict,
@@ -143,6 +143,7 @@ def regression(
 
 def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     tbin = dataset_dict["tbin"]
+    max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
 
@@ -166,14 +167,19 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
             )
 
             P = []
-            for b in range(full_model.inputs.batches):
-                XZ, _, _, _ = self.inputs.sample_XZ(batch, samples=1)
+            for batch in range(full_model.input_group.batches):
+                XZ, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
                 if type(full_model.likelihood) == nprb.likelihoods.Poisson:
                     rate = nprb.utils.model.marginal_posterior_samples(
                         full_model.mapping, full_model.likelihood.f, XZ, 1000, pick_neurons)
-
-                    P.append(nprb.utils.stats.poiss_count_prob(c, rate, tbin))
+                    rate = rate.mean(0)  # posterior mean
+                    
+                    P_mean = np.stack([
+                        nprb.utils.stats.poiss_count_prob(c, rate, tbin) 
+                        for c in range(max_count+1)
+                    ], axis=-1)
+                    P.append(P_mean)
 
                 elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
                     rate = nprb.utils.model.marginal_posterior_samples(
@@ -182,7 +188,11 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
                         full_model.likelihood.dispersion_mapping, full_model.likelihood.dispersion_mapping_f, 
                         XZ, 1000, pick_neurons)
 
-                    P.append(nprb.utils.stats.nb_count_prob(c, rate, r_inv, tbin))
+                    P_mean = np.stack([
+                        nprb.utils.stats.poiss_count_prob(c, rate, r_inv, tbin) 
+                        for c in range(max_count+1)
+                    ], axis=-1)
+                    P.append(P_mean)
 
                 else:  # UCM
                     P_mc = nprb.utils.model.compute_UCM_P_count(
@@ -255,7 +265,7 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, device):
     for name in config_names:
         config_name = name + "-1"
 
-        full_model, training_loss, fit_dict, val_dict = models.load_model(
+        full_model, _, _, _ = models.load_model(
             config_name,
             checkpoint_dir,
             dataset_dict,

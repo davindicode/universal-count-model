@@ -74,8 +74,8 @@ def compute_UCM_P_count(mapping, likelihood, covariates, show_neuron, MC=1000, t
     
     F_dims = likelihood._neuron_to_F(show_neuron)
     with torch.no_grad():
-        h = sample_F(
-            mapping, covariates, MC, F_dims, trials=trials
+        h = marginal_posterior_samples(
+            mapping, lambda x: x, covariates, MC, F_dims, trials=trials
         )
         logp = likelihood.get_logp(h, show_neuron)  # samples, N, time, K
 

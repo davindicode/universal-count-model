@@ -189,7 +189,7 @@ class FFNN(_input_mapping):
         self.compute_F(XZ)[0]
 
 
-def enc_used(model_dict, covariates, learn_mean):
+def enc_used(model_dict, covariates, learn_mean, rng):
     """
     Construct the neural encoding mapping module
     """
@@ -217,21 +217,21 @@ def enc_used(model_dict, covariates, learn_mean):
             ls = 5.0 * np.ones(out_dims)
         elif comp == "omega":
             scale = covariates["omega"].std()
-            locs = scale * np.random.randn(num_induc)
+            locs = scale * rng.normal(size=(num_induc,))
             ls = scale * np.ones(out_dims)
         elif comp == "speed":
             scale = covariates["speed"].std()
-            locs = np.random.uniform(0, scale, size=(num_induc,))
+            locs = scale * rng.uniform(size=(num_induc,))
             ls = 10.0 * np.ones(out_dims)
         elif comp == "x":
             left_x = covariates["x"].min()
             right_x = covariates["x"].max()
-            locs = np.random.uniform(left_x, right_x, size=(num_induc,))
+            locs = rng.uniform(left_x, right_x, size=(num_induc,))
             ls = (right_x - left_x) / 10.0 * np.ones(out_dims)
         elif comp == "y":
             bottom_y = covariates["y"].min()
             top_y = covariates["y"].max()
-            locs = np.random.uniform(bottom_y, top_y, size=(num_induc,))
+            locs = rng.uniform(bottom_y, top_y, size=(num_induc,))
             ls = (top_y - bottom_y) / 10.0 * np.ones(out_dims)
         elif comp == "time":
             scale = covariates["time"].max()
@@ -273,7 +273,7 @@ def enc_used(model_dict, covariates, learn_mean):
             kernel_tuples += [("SE", "euclid", torch.tensor(euclid_ls))]
 
         # z
-        latent_k, latent_u = latent_kernel(z_mode, num_induc, out_dims)
+        latent_k, latent_u = latent_kernel(z_mode, num_induc, out_dims, rng)
         kernel_tuples += latent_k
         ind_list += latent_u
 
@@ -448,7 +448,7 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
     return kernelobj
 
 
-def latent_kernel(z_mode, num_induc, out_dims):
+def latent_kernel(z_mode, num_induc, out_dims, rng):
     """
     Create the kernel tuples and inducing point lists for latent spaces
     """
@@ -463,7 +463,7 @@ def latent_kernel(z_mode, num_induc, out_dims):
         if zc[:1] == "R":
             dz = int(zc[1:])
             for h in range(dz):
-                ind_list += [np.random.randn(num_induc)]
+                ind_list += [rng.normal(size=(num_induc,))]
             ls = np.array([l_one] * dz)
             kernel_tuples += [("SE", "euclid", torch.tensor(ls))]
 
@@ -873,8 +873,8 @@ def setup_model(data_dict, model_dict, enc_used):
 
     # seed everything
     seed = model_dict["seed"]
-    np.random.seed(seed)
     torch.manual_seed(seed)
+    rng = np.random.default_rng(seed)
 
     # inputs
     input_data, d_x, d_z = inputs_used(model_dict, cov, batch_info)
@@ -891,7 +891,7 @@ def setup_model(data_dict, model_dict, enc_used):
     )  # number of output dimensions of the input_mapping
 
     learn_mean = ll_mode_comps[0] != "U"
-    mapping = enc_used(model_dict, cov, learn_mean)
+    mapping = enc_used(model_dict, cov, learn_mean, rng)
 
     # likelihood
     likelihood = get_likelihood(model_dict, cov, enc_used)
