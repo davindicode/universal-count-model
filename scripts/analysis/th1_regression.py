@@ -611,6 +611,31 @@ def tunings(model_name):
     marg_pos_mean = mpos_mean.reshape(-1, A, B)
     marg_pos_FF = mpos_ff.reshape(-1, A, B)
 
+    
+    marginal_tunings = {
+        hd_avg_tf,
+        hd_FF_tf,
+        omega_avg_tf,
+        omega_FF_tf,
+        speed_avg_tf,
+        speed_FF_tf,
+        pos_avg_tf,
+        pos_FF_tf,
+        time_avg_tf,
+        time_FF_tf,
+        mhd_mean,
+        mhd_ff,
+        mw_mean,
+        mw_ff,
+        ms_mean,
+        ms_ff,
+        mpos_mean,
+        mpos_ff,
+        mt_mean,
+        mt_ff,
+    }
+    
+    
     # conditional tuning curves
     MC = 300
     MC_ = 100
@@ -798,20 +823,8 @@ def tunings(model_name):
 
     avg_pos = np.stack(avg_pos)
     FF_pos = np.stack(FF_pos)
-
-    tunings_dict = {
-        # tuning indices
-        hd_avg_tf,
-        hd_FF_tf,
-        omega_avg_tf,
-        omega_FF_tf,
-        speed_avg_tf,
-        speed_FF_tf,
-        pos_avg_tf,
-        pos_FF_tf,
-        time_avg_tf,
-        time_FF_tf,
-        # conditional tuning curves
+    
+    conditional_tunings = {
         eval_hd,
         avg_hd_percentiles,
         FF_hd_percentiles,
@@ -828,18 +841,12 @@ def tunings(model_name):
         grid_shape_pos,
         avg_pos,
         FF_pos,
-        # marginalized tuning curves
-        mhd_mean,
-        mhd_ff,
-        mw_mean,
-        mw_ff,
-        ms_mean,
-        ms_ff,
-        mpos_mean,
-        mpos_ff,
-        mt_mean,
-        mt_ff,
-        # special joint tuning curves
+    }
+    
+    
+    
+    # special joint tuning curves
+    joint_tunings = {
         grid_size_hdw,
         grid_shape_hdw,
         field_hdw,
@@ -856,6 +863,13 @@ def tunings(model_name):
         amp_t,
         ampm_t,
         sim_mat,
+    }
+    
+
+    tunings_dict = {
+        marginal_tunings, 
+        conditional_tunings, 
+        joint_tunings, 
     }
 
     return tunings_dict

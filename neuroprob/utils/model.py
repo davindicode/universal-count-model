@@ -5,33 +5,14 @@ import torch.optim as optim
 
 from ..likelihoods.base import mc_gen
 from ..likelihoods import Universal
-from .stats import percentiles_from_samples
-
-    
-def sample_F(mapping, covariates, MC, F_dims, trials=1, eps=None):
-    """
-    Sample F from diagonalized variational posterior.
-
-    :returns: F of shape (MCxtrials, outdims, time)
-    """
-    cov = mapping.to_XZ(covariates, trials)
-    if mapping.MC_only or eps is not None:
-        samples = mapping.sample_F(cov, eps=eps)[:, F_dims, :]
-    
-    else:
-        F_mu, F_var = mapping.compute_F(cov)
-        samples = mc_gen(F_mu, F_var, MC, F_dims)
-
-    if trials > 1:
-        samples = samples.view(-1, trials, *samples.shape[1:])
-    return samples
 
 
-def posterior_rate(
-    mapping, inv_link, covariates, MC, F_dims, trials=1, percentiles=[0.05, 0.5, 0.95], smooth_length=1
+
+def marginal_posterior_samples(
+    mapping, inv_link, covariates, MC, F_dims, trials=1
 ):
     """
-    Sample F from diagonalized variational posterior.
+    Sample f(F) from diagonalized variational posterior.
 
     :returns: F of shape (MCxtrials, outdims, time)
     """
@@ -45,7 +26,7 @@ def posterior_rate(
             samples = mc_gen(F_mu[:, F_dims, :], F_var[:, F_dims, :], MC, list(range(len(F_dims))))
         
     samples = inv_link(samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples)
-    return percentiles_from_samples(samples, percentiles, smooth_length=smooth_length)
+    return samples
 
 
 def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):

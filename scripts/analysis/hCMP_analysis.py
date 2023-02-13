@@ -141,145 +141,23 @@ def regression(
 
 
 
-def compute_count_stats(
-    modelfit,
-    spktrain,
-    behav_list,
-    neuron,
-    traj_len=None,
-    traj_spikes=None,
-    start=0,
-    T=100000,
-    bs=5000,
-    n_samp=1000,
-):
-    """
-    Compute the dispersion statistics for the count model
-
-    :param string mode: *single* mode refers to computing separate single neuron quantities, *population* mode
-                        refers to computing over a population indicated by neurons, *peer* mode involves the
-                        peer predictability i.e. conditioning on all other neurons given a subset
-    """
-    mapping = modelfit.mapping
-    likelihood = modelfit.likelihood
-    tbin = modelfit.likelihood.tbin
-
-    N = int(np.ceil(T / bs))
-    rate_model = []
-    shape_model = []
-    spktrain = spktrain[:, start : start + T]
-    behav_list = [b[start : start + T] for b in behav_list]
-
-    for k in range(N):
-        covariates_ = [torchb[k * bs : (k + 1) * bs] for b in behav_list]
-        ospktrain = spktrain[None, ...]
-
-        rate = posterior_rate(
-            mapping, likelihood, covariates, MC, F_dims, trials=1, percentiles=[0.5]
-        )  # glm.mapping.eval_rate(covariates_, neuron, n_samp=1000)
-        rate_model += [rate[0, ...]]
-
-        if likelihood.dispersion_mapping is not None:
-            cov = mapping.to_XZ(covariates_, trials=1)
-            disp = likelihood.sample_dispersion(cov, n_samp, neuron)
-            shape_model += [disp[0, ...]]
-
-    rate_model = np.concatenate(rate_model, axis=1)
-    if count_model and glm.likelihood.dispersion_mapping is not None:
-        shape_model = np.concatenate(shape_model, axis=1)
-
-    if type(likelihood) == nprb.likelihoods.Poisson:
-        shape_model = None
-        f_p = lambda c, avg, shape, t: utils.stats.poiss_count_prob(c, avg, t)
-
-    elif type(likelihood) == nprb.likelihoods.Negative_binomial:
-        shape_model = (
-            glm.likelihood.r_inv.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        )
-        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.COM_Poisson:
-        shape_model = glm.likelihood.nu.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.ZI_Poisson:
-        shape_model = (
-            glm.likelihood.alpha.data.cpu().numpy()[:, None].repeat(T, axis=-1)
-        )
-        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hNegative_binomial:
-        f_p = lambda c, avg, shape, t: utils.stats.nb_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hCOM_Poisson:
-        f_p = lambda c, avg, shape, t: utils.stats.cmp_count_prob(c, avg, shape, t)
-
-    elif type(likelihood) == nprb.likelihoods.hZI_Poisson:
-        f_p = lambda c, avg, shape, t: utils.stats.zip_count_prob(c, avg, shape, t)
-
-    else:
-        raise ValueError
-
-    m_f = lambda x: x
-
-    if shape_model is not None:
-        assert traj_len == 1
-    if traj_len is not None:
-        traj_lens = (T // traj_len) * [traj_len]
-
-    q_ = []
-    for k, ne in enumerate(neuron):
-        if traj_spikes is not None:
-            avg_spikecnt = np.cumsum(rate_model[k] * tbin)
-            nc = 1
-            traj_len = 0
-            for tt in range(T):
-                if avg_spikecnt >= traj_spikes * nc:
-                    nc += 1
-                    traj_lens.append(traj_len)
-                    traj_len = 0
-                    continue
-                traj_len += 1
-
-        if shape_model is not None:
-            sh = shape_model[k]
-            spktr = spktrain[ne]
-            rm = rate_model[k]
-        else:
-            sh = None
-            spktr = []
-            rm = []
-            start = np.cumsum(traj_lens)
-            for tt, traj_len in enumerate(traj_lens):
-                spktr.append(spktrain[ne][start[tt] : start[tt] + traj_len].sum())
-                rm.append(rate_model[k][start[tt] : start[tt] + traj_len].sum())
-            spktr = np.array(spktr)
-            rm = np.array(rm)
-
-        q_.append(utils.stats.count_KS_method(f_p, m_f, tbin, spktr, rm, shape=sh))
-
-    return q_
-
-
-
-def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
+def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     tbin = dataset_dict["tbin"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
 
     ### KS framework ###
-    Qq_rg = []
-    Zz_rg = []
+    Qq, Zz = [], []
 
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000  # batch size for cross-validation
 
     RG_cv_ll = []
-    for en, name in enumerate(config_names):
+    for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
 
-            full_model, training_loss, fit_dict, val_dict = models.load_model(
+            full_model, _, _, _ = models.load_model(
                 config_name,
                 checkpoint_dir,
                 dataset_dict,
@@ -287,54 +165,51 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
                 device,
             )
 
-            if en > 1:
-                # predictive posterior
-                P_mc = nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping,
-                    full_model.likelihood,
-                    pick_neurons,
-                    None,
-                    cov_samples=10,
-                    ll_samples=1,
-                    tr=0,
-                )
-                P = P_mc.mean(0).cpu().numpy()
+            P = []
+            for b in range(full_model.inputs.batches):
+                XZ, _, _, _ = self.inputs.sample_XZ(batch, samples=1)
 
-                q_ = []
-                Z_ = []
-                for n in range(len(pick_neurons)):
-                    spike_binned = full_model.likelihood.spikes[0][
-                        0, pick_neurons[n], :
-                    ].numpy()
-                    q, Z = utils.get_q_Z(P[n, ...], spike_binned, deq_noise=None)
-                    q_.append(q)
-                    Z_.append(Z)
+                if type(full_model.likelihood) == nprb.likelihoods.Poisson:
+                    rate = nprb.utils.model.marginal_posterior_samples(
+                        full_model.mapping, full_model.likelihood.f, XZ, 1000, pick_neurons)
 
-            elif en < 2:
-                fit_train = fit_dict["spiketrain"]
-                fit_covs = fit_dict["covariates"]
-                time_steps = fit_train.shape[-1]
+                    P.append(nprb.utils.stats.poiss_count_prob(c, rate, tbin))
 
-                q_ = utils.compute_count_stats(
-                    full_model,
-                    mode[1],
-                    tbin,
-                    fit_train,
-                    fit_covs,
-                    pick_neurons,
-                    traj_len=1,
-                    start=0,
-                    T=time_steps,
-                    bs=5000,
-                )
-                Z_ = [nprb.utils.stats.q_to_Z(q) for q in q_]
+                elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
+                    rate = nprb.utils.model.marginal_posterior_samples(
+                        full_model.mapping, full_model.likelihood.f, XZ, 1000, pick_neurons)
+                    r_inv = nprb.utils.model.marginal_posterior_samples(
+                        full_model.likelihood.dispersion_mapping, full_model.likelihood.dispersion_mapping_f, 
+                        XZ, 1000, pick_neurons)
 
-            Qq_rg.append(q_)
-            Zz_rg.append(Z_)
+                    P.append(nprb.utils.stats.nb_count_prob(c, rate, r_inv, tbin))
 
-    q_DS_rg = []
-    T_DS_rg = []
-    T_KS_rg = []
+                else:  # UCM
+                    P_mc = nprb.utils.model.compute_UCM_P_count(
+                        full_model.mapping,
+                        full_model.likelihood,
+                        pick_neurons,
+                        MC=30, 
+                    )
+                    P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
+                    
+            P = np.concatenate(P, axis=1)  # count probabilities of shape (neurons, timesteps, count)
+
+            q_ = []
+            Z_ = []
+            for n in range(len(pick_neurons)):
+                spike_binned = full_model.likelihood.spikes[0][
+                    0, pick_neurons[n], :
+                ].numpy()
+                q = nprb.utils.stats.counts_to_quantiles(P[n, ...], spike_binned, rng)
+                
+                q_.append(q)
+                Z_.append(nprb.utils.stats.quantile_Z_mapping(q))
+                
+            Qq.append(q_)
+            Zz.append(Z_)
+
+    q_DS, T_DS, T_KS = [], [], []
     for q in Qq_rg:
         for qq in q:
             (
@@ -345,20 +220,20 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
                 p_DS,
                 p_KS,
             ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05, alpha_s=0.05)
-            T_DS_rg.append(T_DS)
-            T_KS_rg.append(T_KS)
+            T_DS.append(T_DS)
+            T_KS.append(T_KS)
 
             Z_DS = T_DS * np.sqrt((qq.shape[0] - 1) / 2)
-            q_DS_rg.append(nprb.utils.stats.Z_to_q(Z_DS))
+            q_DS.append(nprb.utils.stats.quantile_Z_mapping(Z_DS, inverse=True))
 
-    q_DS_rg = np.array(q_DS_rg).reshape(len(CV), len(M), -1)
-    T_DS_rg = np.array(T_DS_rg).reshape(len(CV), len(M), -1)
-    T_KS_rg = np.array(T_KS_rg).reshape(len(CV), len(M), -1)
+    q_DS = np.array(q_DS).reshape(len(config_names), len(kcvs), -1)
+    T_DS = np.array(T_DS).reshape(len(config_names), len(kcvs), -1)
+    T_KS = np.array(T_KS).reshape(len(config_names), len(kcvs), -1)
 
     dispersion_dict = {
-        "q_DS": q_DS_rg,
-        "T_DS": T_DS_rg,
-        "T_KS": T_KS_rg,
+        "q_DS": q_DS,
+        "T_DS": T_DS,
+        "T_KS": T_KS,
         "significance_DS": sign_DS,
         "significance_KS": sign_KS,
         "quantiles": Qq_rg,
@@ -540,13 +415,13 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, device):
         comp_ff.append([cs_.cpu().numpy() for cs_ in ffs])
 
     latent_dict = {
-        "covariates_aligned": covariates_aligned,
-        "lat_t_": lat_t_,
-        "lat_std_": lat_std_,
-        "comp_avg": comp_avg,
-        "comp_ff": comp_ff,
         "LVM_cv_ll": LVM_cv_ll,
         "RMS_cv": RMS_cv,
+        "covariates_aligned": covariates_aligned,
+        "latent_mu": lat_t_,
+        "latent_std": lat_std_,
+        "comp_avg": comp_avg,
+        "comp_FF": comp_ff,
     }
 
     return latent_dict
@@ -562,6 +437,7 @@ def main():
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
+    parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--dataseed", default=1, type=int)
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
@@ -585,6 +461,8 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+        
+    rng = np.random.default_rng(args.seed)
 
     ### names ###
     data_type = "hCMP{}".format(args.dataseed)
@@ -612,7 +490,7 @@ def main():
         checkpoint_dir, reg_config_names, data_path, data_type, dataset_dict, dev
     )
     variability_dict = variability_stats(
-        checkpoint_dir, reg_config_names, dataset_dict, dev
+        checkpoint_dir, reg_config_names, dataset_dict, rng, dev
     )
     latent_dict = latent_variable(checkpoint_dir, lat_config_names, dataset_dict, dev)
 

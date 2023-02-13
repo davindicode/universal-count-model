@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 
 
-
+# percentiles
 def percentiles_from_samples(
     samples, percentiles=[0.05, 0.5, 0.95], smooth_length=1, padding_mode="replicate"
 ):
@@ -58,7 +58,7 @@ def percentiles_from_samples(
 
 
 
-# count statistics
+# count distributions
 def poiss_count_prob(n, rate, sim_time):
     """
     Evaluate count data against the Poisson process count distribution.
@@ -147,21 +147,6 @@ def cmp_count_prob(n, rate, nu, sim_time, J=100):
     return np.exp(np.log(g) * n - logsumexp_Z - sps.gammaln(n + 1) * nu)
 
 
-
-def cdf_count_deq(n, deq, count_prob, N_MAX=100):
-    """
-    Compute the dequantized cdf count.
-
-    :param int n: integer spike count
-    :param float deq: dequantization noise
-    :param LambdaFunction count_prob:
-    """
-    N = np.arange(n + 1)
-    C = count_prob(N)
-    cdf = C[:n].sum() + deq * C[n]
-    return cdf
-
-
 def cmp_moments(k, rate, nu, sim_time, J=100):
     """
     :param np.array rate: input rate of shape (neurons, timesteps)
@@ -184,58 +169,39 @@ def cmp_moments(k, rate, nu, sim_time, J=100):
     ).sum(0)
 
 
-def count_KS_method(
-    count_dist, mean_func, sample_bin, spike_binned, rate, shape=None, deq_noise=None
-):
+# KS and dispersion statistics
+def counts_to_quantiles(P_count, counts, rng):
     """
-    Overdispersion analysis using rate-rescaled distributions and Kolmogorov-Smirnov
-    statistics. Trajectory lengths are given, unless the expected count is below
-    min_spikes (avoid dequantization effect).
-
-    :param LambdaType count_dist: lambda function with input (count, rate, time) and output p
-    :param LambdaType mean_func: lambda function with input (avg_rate*T) and output avg_cnt
-    :param float sample_bin: length of time bin
-    :param numpy.array spike_ind: indices of the spike times
-    :param numpy.array rate: rate as sampled at sample_bin
-    :param float alpha: significance level of the statistical test
-    :returns: quantiles, q_order, ks_y, T_DS, T_KS, sign_DS, sign_KS
-    :rtype: tuple
+    :param np.array P_count: count distribution values (ts, counts)
+    :param np.array counts: count values (ts,)
     """
-    if shape is not None:
-        assert rate.shape[0] == shape.shape[0]
-    traj_lens = rate.shape[0]
-    q_cdf = []
+    counts = counts.astype(int)
+    deq_noise = rng.uniform(size=counts.shape)
 
-    if deq_noise is None:
-        deq_noise = np.random.uniform(size=spike_binned.shape)
-
-    for tt in range(traj_lens):
-        f_p = lambda c: count_dist(
-            c, rate[tt], shape[tt] if shape is not None else None, sample_bin
-        )
-        q_cdf.append(cdf_count_deq(int(spike_binned[tt]), deq_noise[tt], f_p))
-
-    quantiles = np.array(q_cdf).flatten()
+    cumP = np.cumsum(P_count, axis=-1)  # T, K
+    tt = np.arange(counts.shape[0])
+    quantiles = (
+        cumP[tt, counts] - P_count[tt, counts] * deq_noise
+    )
     return quantiles
 
 
-def q_to_Z(quantiles, LIM=1e-15):
+def quantile_Z_mapping(x, inverse=False, LIM=1e-15):
     """
-    Transform to Z-scores from quantiles.
+    Transform to Z-scores from quantiles in forward mapping.
     """
-    _q = 1.0 - quantiles
-    _q[_q < LIM] = LIM
-    _q[_q > 1.0 - LIM] = 1.0 - LIM
-    z = scstats.norm.isf(_q)
-    return z
-
-
-def Z_to_q(Z, LIM=1e-15):
-    """
-    Transform from Z-scores to quantiles.
-    """
-    q = scstats.norm.cdf(Z)
-    return q
+    if inverse:
+        Z = x
+        q = scstats.norm.cdf(Z)
+        return q
+    else:
+        q = x
+        _q = 1.0 - q
+        _q[_q < LIM] = LIM
+        _q[_q > 1.0 - LIM] = 1.0 - LIM
+        Z = scstats.norm.isf(_q)
+        return Z
+    
 
 
 def KS_sampling_dist(x, samples, K=100000):
@@ -266,7 +232,7 @@ def KS_DS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
     # dispersion scores
     T_KS = np.abs(ks_y).max()
 
-    z = q_to_Z(quantiles)
+    z = quantile_Z_mapping(quantiles)
     T_DS = np.log((z**2).mean()) + 1 / samples + 1 / 3 / samples**2
     T_DS_ = T_DS / np.sqrt(2 / (samples - 1))  # unit normal null distribution
 

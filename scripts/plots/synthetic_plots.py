@@ -8,7 +8,7 @@ import numpy as np
 
 import torch
 
-sys.path.append("..")
+sys.path.append("../..")
 from neuroprob import utils
 
 

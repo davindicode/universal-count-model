@@ -70,21 +70,6 @@ def ind_to_pair(ind, N):
     return n - 1, m
 
 
-def get_q_Z(P, spike_binned, deq_noise=None):
-    if deq_noise is None:
-        deq_noise = np.random.uniform(size=spike_binned.shape)
-    else:
-        deq_noise = 0
-
-    cumP = np.cumsum(P, axis=-1)  # T, K
-    tt = np.arange(spike_binned.shape[0])
-    quantiles = (
-        cumP[tt, spike_binned.astype(int)] - P[tt, spike_binned.astype(int)] * deq_noise
-    )
-    Z = utils.stats.q_to_Z(quantiles)
-    return quantiles, Z
-
-
 
 # metrics
 def metric(x, y, topology="euclid"):
