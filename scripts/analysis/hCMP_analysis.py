@@ -60,7 +60,7 @@ def regression(
     hCMP = np.load(data_path + "hCMP1.npz")
     hd = hCMP["covariates"][:, 0]
 
-    gt_lamb = np.maximum(hCMP["gt_lamb"], 1e-12)  # avoid divergence at 0
+    gt_lamb = hCMP["gt_lamb"]
     gt_nu = hCMP["gt_nu"]
 
     gt_mean = nprb.utils.stats.cmp_moments(1, gt_lamb, gt_nu, tbin, J=10000)

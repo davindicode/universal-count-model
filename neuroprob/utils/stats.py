@@ -59,105 +59,105 @@ def percentiles_from_samples(
 
 
 # count distributions
-def poiss_count_prob(n, rate, sim_time):
+def poiss_count_prob(counts, rate, sim_time):
     """
     Evaluate count data against the Poisson process count distribution.
 
-    :param scalar n: count value
-    :param scalar rate: rate value
+    :param np.array n: count array (K,)
+    :param np.array rate: rate array
     :param scalar sim_time: time bin size
     """
-    g = rate * sim_time
-    if g == 0:
-        return (n == 0).astype(float)
+    g = (rate * sim_time)[..., None]  # (..., 1)
+    log_g = np.log(np.maximum(g, 1e-12))
 
     return np.exp(
-        n * np.log(g) - g - sps.gammaln(n + 1)
-    )  # / sps.factorial(n) # scipy.special.factorial computes array! efficiently
+        counts * log_g - g - sps.gammaln(counts + 1)
+    )
 
 
-def zip_count_prob(n, rate, alpha, sim_time):
+def zip_count_prob(counts, rate, alpha, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
 
-    :param scalar n: count value
-    :param scalar rate: rate value
-    :param scalar alpha: zero inflation probability
+    :param np.array counts: count array (K,)
+    :param np.array rate: rate array
+    :param np.array alpha: zero inflation probability array
     :param scalar sim_time: time bin size
     """
-    g = rate * sim_time
-    if g == 0:
-        return (n == 0).astype(float)
-
-    zero_mask = n == 0
+    g = (rate * sim_time)[..., None]  # (..., 1)
+    log_g = np.log(np.maximum(g, 1e-12))
+    alpha = alpha[..., None]
+    
+    zero_mask = (counts == 0)
     p_ = (1.0 - alpha) * np.exp(
-        n * np.log(g) - g - sps.gammaln(n + 1)
-    )  # / sps.factorial(n))
+        counts * log_g - g - sps.gammaln(counts + 1)
+    )
     return zero_mask * (alpha + p_) + (1.0 - zero_mask) * p_
 
 
-def nb_count_prob(n, rate, r_inv, sim_time):
+def nb_count_prob(counts, rate, r_inv, sim_time):
     """
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
     
-    :param scalar n: count value
-    :param scalar rate: rate value
-    :param scalar r_inv: 1/r value
+    :param np.array counts: count array (K,)
+    :param np.array rate: rate array
+    :param np.array r_inv: 1/r array
     :param scalar sim_time: time bin size
     """
-    g = rate * sim_time
-    if g == 0:
-        return (n == 0).astype(float)
-
+    g = (rate * sim_time)[..., None]  # (..., 1)
+    log_g = np.log(np.maximum(g, 1e-12))
+    r_inv = r_inv[..., None]
+    
     asymptotic_mask = (r_inv < 1e-4)
     r = 1.0 / (r_inv + asymptotic_mask)
 
-    base_terms = np.log(g) * n - sps.gammaln(n + 1)
+    base_terms = log_g * counts - sps.gammaln(counts + 1)
     log_terms = (
-        sps.loggamma(r + n) - sps.loggamma(r) - (n + r) * np.log(g + r) + r * np.log(r)
+        sps.loggamma(r + counts) - sps.loggamma(r) - (counts + r) * np.log(g + r) + r * np.log(r)
     )
     ll_r = base_terms + log_terms
-    ll_r_inv = base_terms - g - np.log(1.0 + r_inv * (n**2 + 1.0 - n * (3 / 2 + g)))
+    ll_r_inv = base_terms - g - np.log(
+        1.0 + asymptotic_mask * r_inv * (counts**2 + 1.0 - counts * (3 / 2 + g)))
     
-    ll = ll_r_inv if asymptotic_mask else ll_r
+    ll = asymptotic_mask * ll_r_inv + (1 - asymptotic_mask) * ll_r
     return np.exp(ll)
 
 
-def cmp_count_prob(n, rate, nu, sim_time, J=100):
+def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     """
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
     
-    :param scalar n: count value
-    :param scalar rate: rate value
-    :param scalar nu: dispersion parameter
+    :param np.array counts: count array (K,)
+    :param np.array rate: rate array
+    :param np.array nu: dispersion parameter array
     :param scalar sim_time: time bin size
     """
-    g = rate * sim_time
-    if g == 0:
-        return (n == 0).astype(float)
+    g = (rate * sim_time)[..., None]  # (..., 1)
+    log_g = np.log(np.maximum(g, 1e-12))
+    nu = nu[..., None]
 
     j = np.arange(J + 1)
-    lnum = np.log(g) * j
+    lnum = log_g * j
     lden = np.log(sps.factorial(j)) * nu
-    dl = lnum - lden
-    dl_m = dl.max()
-    logsumexp_Z = np.log(np.exp(dl - dl_m).sum()) + dl_m  # numerically stable
-    return np.exp(np.log(g) * n - logsumexp_Z - sps.gammaln(n + 1) * nu)
+    logsumexp_Z = sps.logsumexp(lnum - lden, axis=-1)[..., None]
+    return np.exp(log_g * counts - logsumexp_Z - sps.gammaln(counts + 1) * nu)  # (..., K)
 
 
 def cmp_moments(k, rate, nu, sim_time, J=100):
     """
+    :param np.array k: order of moment to compute
     :param np.array rate: input rate of shape (neurons, timesteps)
     """
     g = rate[None, ...] * sim_time
+    log_g = np.log(np.maximum(g, 1e-12))
     nu = nu[None, ...]
     k = np.array([k])[:, None, None]  # turn into array
 
     n = np.arange(1, J + 1)[:, None, None]
     j = np.arange(J + 1)[:, None, None]
-    lnum = np.log(g) * j
+    lnum = log_g * j
     lden = np.log(sps.factorial(j)) * nu
     dl = lnum - lden
     dl_m = dl.max(axis=0)
@@ -165,7 +165,7 @@ def cmp_moments(k, rate, nu, sim_time, J=100):
         None, ...
     ]  # numerically stable
     return np.exp(
-        k * np.log(n) + np.log(g) * n - logsumexp_Z - sps.gammaln(n + 1) * nu
+        k * np.log(n) + log_g * n - logsumexp_Z - sps.gammaln(n + 1) * nu
     ).sum(0)
 
 
