@@ -158,7 +158,6 @@ class FFNN(_input_mapping):
             for k in range(len(layers) - 1):
                 net.append(nn.Linear(layers[k], layers[k + 1], bias=bias))
                 net.append(nonlin())
-                # net.append(nn.BatchNorm1d())
             net.append(nn.Linear(layers[-1:][0], out_dims, bias=bias))
 
         self.add_module("net", nn.Sequential(*net))
@@ -168,10 +167,10 @@ class FFNN(_input_mapping):
         The input to the ANN will be of shape (samples*timesteps, dims).
 
         :param torch.Tensor cov: covariates with shape (samples, timesteps, dims)
-        :returns: inner product with shape (samples, neurons, timesteps)
-        :rtype: torch.tensor
+        :returns:
+            mapping output with shape (samples, out_dims, timesteps), 0 covariance
         """
-        XZ = self._XZ(XZ)
+        XZ = self._XZ(XZ)  # (mc, out_dims or 1, ts, dims)
         incov = XZ.view(-1, XZ.shape[-1])
 
         embed = torch.cat(
@@ -182,7 +181,7 @@ class FFNN(_input_mapping):
             ),
             dim=-1,
         )
-        mu = self.net(embed).view(*XZ.shape[:2], -1).permute(0, 2, 1)
+        mu = self.net(embed).view(XZ.shape[0], self.out_dims, XZ.shape[2])
         return mu, 0
 
     def sample_F(self, XZ):
@@ -579,7 +578,7 @@ def inputs_used(model_dict, covariates, batch_info):
     return input_data, d_x, d_z
 
 
-def get_likelihood(model_dict, cov, enc_used):
+def get_likelihood(model_dict, cov, enc_used, rng):
     """
     Create the likelihood object.
     """
@@ -595,7 +594,7 @@ def get_likelihood(model_dict, cov, enc_used):
     inner_dims = model_dict["map_outdims"]
 
     if ll_mode[0] == "h":
-        hgp = enc_used(model_dict, cov, learn_mean=True)
+        hgp = enc_used(model_dict, cov, True, rng)
 
     if ll_mode_comps[0] == "U":
         inv_link = "identity"
@@ -894,7 +893,7 @@ def setup_model(data_dict, model_dict, enc_used):
     mapping = enc_used(model_dict, cov, learn_mean, rng)
 
     # likelihood
-    likelihood = get_likelihood(model_dict, cov, enc_used)
+    likelihood = get_likelihood(model_dict, cov, enc_used, rng)
     likelihood.set_Y(torch.from_numpy(spktrain), batch_info=batch_info)
 
     full = nprb.inference.VI_optimized(input_group, mapping, likelihood)
@@ -1103,7 +1102,7 @@ def load_model(
 
 
 ### cross validation ###
-def RG_pred_ll(
+def RG_Ell(
     model,
     val_dict,
     neuron_group=None,
@@ -1120,16 +1119,15 @@ def RG_pred_ll(
     vbatch_info = val_dict["batch_info"]
 
     time_steps = vtrain.shape[-1]
-    # print("Data segment timesteps: {}".format(time_steps))
 
     model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
     model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
     model.validate_model(likelihood_set=True)
 
     # batching
-    pll = []
+    Ell = []
     for b in range(model.input_group.batches):
-        pll.append(
+        Ell.append(
             -model.objective(
                 b,
                 cov_samples=cov_samples,
@@ -1140,20 +1138,20 @@ def RG_pred_ll(
             ).item()
         )
 
-    return np.array(pll).mean()  # mean over each subsampled estimate
+    return np.array(Ell).mean()  # mean over each subsampled estimate
 
 
-def LVM_pred_ll(
+def LVM_Ell(
     model,
     val_dict,
     fit_neurons,
     val_neurons,
-    eval_cov_MC=1,
-    eval_ll_MC=100,
+    eval_cov_samples=1,
+    eval_ll_samples=100,
     eval_ll_mode="GH",
-    annealing=lambda x: 1.0,  # min(1.0, 0.002*x)
-    cov_MC=16,
-    ll_MC=1,
+    annealing=lambda x: 1.0, 
+    cov_samples=16,
+    ll_samples=1,
     ll_mode="MC",
     beta=1.0,
     max_iters=3000,
@@ -1166,7 +1164,6 @@ def LVM_pred_ll(
     vbatch_info = val_dict["batch_info"]
 
     time_steps = vtrain.shape[-1]
-    # print("Data segment timesteps: {}".format(time_steps))
 
     model.input_group.set_XZ(vcov, time_steps, batch_info=vbatch_info)
     model.likelihood.set_Y(vtrain, batch_info=vbatch_info)
@@ -1174,15 +1171,12 @@ def LVM_pred_ll(
 
     # fit
     sch = lambda o: optim.lr_scheduler.MultiplicativeLR(o, lambda e: 0.9)
-    opt_tuple = (optim.Adam, 100, sch)
     opt_lr_dict = {"default": 0}
     for z_dim in model.input_group.latent_dims:
         opt_lr_dict["input_group.input_{}.variational.mu".format(z_dim)] = 1e-2
         opt_lr_dict["input_group.input_{}.variational.finv_std".format(z_dim)] = 1e-3
 
-    model.set_optimizers(
-        opt_tuple, opt_lr_dict
-    )  # , nat_grad=('rate_model.0.u_loc', 'rate_model.0.u_scale_tril'))
+    model.set_optimizers(optim.Adam, sch, 100, opt_lr_dict)
 
     losses = model.fit(
         max_iters,
@@ -1191,24 +1185,24 @@ def LVM_pred_ll(
         margin_epochs=100,
         ll_mode=ll_mode,
         kl_anneal_func=annealing,
-        cov_samples=cov_MC,
-        ll_samples=ll_MC,
+        cov_samples=cov_samples,
+        ll_samples=ll_samples,
     )
 
-    pll = []
+    Ell = []
     for b in range(model.input_group.batches):
-        pll.append(
+        Ell.append(
             -model.objective(
                 b,
                 neuron=val_neurons,
-                cov_samples=eval_cov_MC,
+                cov_samples=eval_cov_samples,
                 ll_mode=eval_ll_mode,
                 beta=beta,
-                ll_samples=eval_ll_MC,
+                ll_samples=eval_ll_samples,
             ).item()
         )
 
-    return np.array(pll).mean(), losses  # mean over each subsampled estimate
+    return np.array(Ell).mean(), losses  # mean over each subsampled estimate
 
 
 ### main ###

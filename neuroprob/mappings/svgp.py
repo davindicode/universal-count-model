@@ -193,11 +193,11 @@ class SVGP(base._input_mapping):
         active_dims=None,
     ):
         """
-        :param int out_dims: number of output dimensions of the GP, usually neurons
-        :param nn.Module inducing_points: initial inducing points with shape (neurons, n_induc, input_dims)
+        :param int out_dims: number of output dimensions of the GP, e.g. neurons
+        :param nn.Module inducing_points: initial inducing points with shape (out_dims, n_induc, input_dims)
         :param Kernel kernel: a tuple listing kernels, with content 
                                      (kernel_type, topology, lengthscale, variance)
-        :param Number/torch.Tensor/nn.Module mean: initial GP mean of shape (samples, neurons, timesteps), or if nn.Module 
+        :param Number/torch.Tensor/nn.Module mean: initial GP mean of shape (samples, out_dims, ts), or if nn.Module 
                                         learnable function to compute the mean given input
         """
         super().__init__(input_dims, out_dims, tensor_type, active_dims)
@@ -284,7 +284,7 @@ class SVGP(base._input_mapping):
             q = dist.MultivariateNormal(
                 self.induc_pts.u_loc, scale_tril=self.induc_pts.u_scale_tril
             )  # .to_event(self.u_loc.dim()-1)
-            kl = dist.kl.kl_divergence(q, p).sum()  # sum over neurons
+            kl = dist.kl.kl_divergence(q, p).sum()  # sum over out_dims
             if torch.isnan(kl).any():
                 kl = 0.0
                 print("Warning: sparse GP prior is NaN, ignoring prior term.")
@@ -298,9 +298,9 @@ class SVGP(base._input_mapping):
         Computes moments of the posterior marginals and updating the cholesky matrix 
         for the covariance over inducing point locations.
 
-        :param XZ: input covariates with shape (samples, neurons, timesteps, dims)
+        :param XZ: input covariates with shape (samples, out_dims, ts, dims)
         :return:
-            mean and diagonal covariance of the posterior
+            mean and diagonal covariance of the posterior (samples, out_dims, ts)
         """
         XZ = self._XZ(XZ)
         loc, var, self.Luu = p_F_U(
@@ -321,9 +321,9 @@ class SVGP(base._input_mapping):
         """
         Samples from the predictive distribution (posterior over evaluation points)
         
-        :param XZ: evaluation input covariates with shape (samples, neurons, timesteps, dims)
+        :param XZ: evaluation input covariates with shape (samples, out_dims, ts, dims)
         :return:
-            joint samples of the posterior (samples, neurons, ts)
+            joint samples of the posterior (samples, out_dims, ts)
         """
         XZ = self._XZ(XZ)
 

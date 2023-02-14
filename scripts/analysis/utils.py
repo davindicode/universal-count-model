@@ -4,6 +4,7 @@ import numpy as np
 
 import torch
 import torch.optim as optim
+from torch.nn.parameter import Parameter
 
 sys.path.append("../..")
 import neuroprob as nprb
@@ -146,14 +147,3 @@ def signed_scaled_shift(
             losses_ = losses
 
     return x * sign_ * scale_ + shift_, shift_, sign_, scale_, losses_
-
-
-def align_CCA(X, X_tar):
-    """
-    :param np.array X: input variables of shape (time, dimensions)
-    """
-    d = X.shape[-1]
-    cca = CCA(n_components=d)
-    cca.fit(X, X_tar)
-    X_c = cca.transform(X)
-    return X_c, cca

@@ -49,8 +49,8 @@ class GLM(base._input_mapping):
         """
         Default linear mapping
 
-        :param torch.Tensor cov: covariates with shape (samples, timesteps, dims)
-        :returns: inner product with shape (samples, neurons, timesteps)
+        :param torch.Tensor cov: covariates with shape (samples, ts, dims)
+        :returns: inner product with shape (samples, out_dims, ts)
         :rtype: torch.tensor
         """
         XZ = self._XZ(XZ)

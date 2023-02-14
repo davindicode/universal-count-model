@@ -10,121 +10,90 @@ import numpy as np
 import scipy.stats as scstats
 import torch
 
-sys.path.append("..")  # access to library
+sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
 sys.path.append("..")  # access to scripts
 import models
 
+import utils
+
 
 def latent_observed(
-    checkpoint_dir, config_names, data_path, data_type, dataset_dict, device
+    checkpoint_dir, config_names, data_path, data_type, dataset_dict, seed, device
 ):
     tbin = dataset_dict["tbin"]
+    ts = dataset_dict["timesamples"]
+    gt_a = dataset_dict["covariates"]["a"]
+    max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
 
-    rhd_t = rcov[0]
-    ra_t = rcov[1]
-    covariates = [
-        rhd_t[None, :, None].repeat(trials, axis=0),
-        ra_t[None, :, None].repeat(trials, axis=0),
-    ]
-
-    checkpoint_dir = "../scripts/checkpoint/"
-    config_name = "th1_U-el-4_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f-1"
-    batch_info = 500
-
-    full_model, training_loss, fit_dict, val_dict = models.load_model(
-        config_name,
-        checkpoint_dir,
-        dataset_dict,
-        batch_info,
-        device,
-    )
-
-    # neuron subgroup likelihood CV
-    seeds = [123, 1234, 12345]
+    ### neuron subgroup likelihood CV ###
+    seeds = [seed, seed+1]
 
     n_group = np.arange(5)
     val_neuron = [n_group, n_group + 10, n_group + 20, n_group + 30, n_group + 40]
 
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
-
-    batch_size = 5000
-    cv_pll = []
-    for em, name in enumerate(lat_config_names):
+    batch_info = 5000
+    
+    cv_Ell = []
+    for en, name in enumerate(config_names):
         for kcv in kcvs:
             config_name = name + str(kcv)
 
-            if em > 1:
+            full_model, _, _, val_dict = models.load_model(
+                config_name,
+                checkpoint_dir,
+                dataset_dict,
+                batch_info,
+                device,
+            )
+            
+            if en > 1:
                 for v_neuron in val_neuron:
 
                     prev_ll = np.inf
-                    for seed in range(seeds):
-                        (
-                            full_model,
-                            training_loss,
-                            fit_dict,
-                            val_dict,
-                        ) = models.load_model(
-                            config_name,
-                            checkpoint_dir,
-                            dataset_dict,
-                            batch_info,
-                            device,
-                        )
+                    for sd in seeds:  # pick best fit with different random seeds
+                        torch.manual_seed(sd)
 
                         mask = np.ones((neurons,), dtype=bool)
                         mask[v_neuron] = False
                         f_neuron = np.arange(neurons)[mask]
 
-                        ll = model_utils.LVM_pred_ll(
+                        ll, _ = models.LVM_Ell(
                             full_model,
-                            mode[-5],
-                            mode[2],
-                            models.cov_used,
-                            cv_set,
+                            val_dict, 
                             f_neuron,
                             v_neuron,
-                            beta=beta,
-                            beta_z=0.0,
+                            beta=0.0,
                             max_iters=3000,
-                        )[0]
+                        )
+
                         if ll < prev_ll:
                             prev_ll = ll
 
-                    cv_pll.append(prev_ll)
+                    cv_Ell.append(prev_ll)
 
-            else:
+            else:  # no latent space
                 for v_neuron in val_neuron:
-                    full_model, training_loss, fit_dict, val_dict = models.load_model(
-                        config_name,
-                        checkpoint_dir,
-                        dataset_dict,
-                        batch_info,
-                        device,
-                    )
-
-                    cv_pll.append(
-                        model_utils.RG_pred_ll(
+                    cv_Ell.append(
+                        models.RG_Ell(
                             full_model,
-                            mode[2],
-                            models.cov_used,
-                            cv_set,
-                            bound="ELBO",
-                            beta=beta,
-                            neuron_group=v_neuron,
+                            val_dict,
+                            neuron_group=None,
                             ll_mode="GH",
                             ll_samples=100,
+                            cov_samples=1,
+                            beta=0.0,
                         )
                     )
 
-    cv_pll = np.array(cv_pll).reshape(len(Ms), len(kcvs), len(val_neuron))
+    cv_Ell = np.array(cv_Ell).reshape(len(config_names), len(kcvs), len(val_neuron))
 
-    # compute tuning curves and latent trajectories for XZ joint regression-latent model
-    checkpoint_dir = "../scripts/checkpoint/"
-    config_name = "modIP_U-el-3_svgp-16_X[hd]_Z[T1]_1K28_0d0_10f-1"
+    ### compute tuning curves and latent trajectories for XZ joint regression-latent model ###
+    config_name = config_names[-1] + '-1'
     batch_info = 500
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
@@ -136,79 +105,82 @@ def latent_observed(
     )
 
     # latents
-    X_loc, X_std = full_model.inputs.eval_XZ()
+    X_loc, X_std = full_model.input_group.input_1.variational.eval_moments(
+        0, ts)
+    X_loc = X_loc.data.cpu().numpy()[:, 0]
+    X_std = X_std.data.cpu().numpy()[:, 0]
 
-    T = X_loc[1].shape[0]
-    X_c, shift, sign, scale, _ = utils.latent.signed_scaled_shift(
-        X_loc[1], ra_t[:T], dev, "euclid", learn_scale=True
+    X_c, shift, sign, scale, _ = utils.signed_scaled_shift(
+        X_loc, gt_a, device, "euclid", learn_scale=True
     )
-    X_s = scale * X_std[1]
+    X_s = scale * X_std
 
     # tuning
     steps = 100
-    covariates_z = [
-        0.0 * np.ones(steps),
-        np.linspace(X_loc[1].min(), X_loc[1].max(), steps),
+    covariates_a = np.linspace(X_loc.min(), X_loc.max(), steps)
+    covs_list = [
+        0.0 * torch.ones(steps),
+        torch.from_numpy(covariates_a)
     ]
-    P_mc = model_utils.compute_P(full_model, covariates_z, pick_neurons, MC=1000).cpu()
+    P_mc = nprb.utils.model.compute_UCM_P_count(
+        full_model.mapping, full_model.likelihood, covs_list, pick_neurons, MC=1000).cpu()
 
     x_counts = torch.arange(max_count + 1)
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
     xcvar = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
     ff = xcvar / avg
 
-    avgs = utils.signal.percentiles_from_samples(
+    avgs = nprb.utils.stats.percentiles_from_samples(
         avg, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
     )
     avg_percentiles = [cs_.cpu().numpy() for cs_ in avgs]
 
-    ffs = utils.signal.percentiles_from_samples(
+    ffs = nprb.utils.stats.percentiles_from_samples(
         ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="replicate"
     )
-    ff_percentiles = [cs_.cpu().numpy() for cs_ in ffs]
+    FF_percentiles = [cs_.cpu().numpy() for cs_ in ffs]
 
-    covariates_z[1] = sign * scale * covariates_z[1] + shift
+    covariates_a = sign * scale * covariates_a + shift
 
     # true tuning
     modIP = np.load(data_path + data_type + ".npz")
     hd = modIP["covariates"][:, 0]
 
-    gt_rate = modIP["gt_rate"]
+    gt_rate = modIP["gt_rate"] * tbin
     gt_FF = np.ones_like(gt_rate)
 
-    latent_dict = {
-        "cv_pll": cv_pll,
+    latent_observed_dict = {
+        "cv_Ell": cv_Ell,
         "X_c": X_c,
         "X_s": X_s,
-        "covariates_z": covariates_z,
+        "covariates_a": covariates_a,
         "avg_percentiles": avg_percentiles,
-        "ff_percentiles": ff_percentiles,
-        "gt_rate": gt_rate,
+        "FF_percentiles": FF_percentiles,
+        "gt_a": gt_a, 
+        "gt_mean": gt_mean,
         "gt_FF": gt_FF,
     }
 
-    return latent_dict
+    return latent_observed_dict
 
 
-def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
+def variability_stats(checkpoint_dir, config_names, data_path, dataset_dict, rng, device):
     tbin = dataset_dict["tbin"]
+    max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
+    NN = len(pick_neurons)
     
     # KS framework
-    Qq = []
-    Zz = []
-    R = []
-    Rp = []
-
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000
 
+    Qq, Zz, R, Rp, fisher_z, fisher_q = [], [], [], [], [], []
     for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
 
-            full_model, training_loss, fit_dict, val_dict = models.load_model(
+            full_model, _, fit_dict, _ = models.load_model(
                 config_name,
                 checkpoint_dir,
                 dataset_dict,
@@ -217,46 +189,46 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
             )
 
             P = []
-            for b in range(full_model.inputs.batches):
-                XZ, _, _, _ = self.inputs.sample_XZ(batch, samples=1)
-                
+            for batch in range(full_model.input_group.batches):
+                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+
                 if type(full_model.likelihood) == nprb.likelihoods.Poisson:
-                    rate = nprb.utils.model.posterior_rate()
-
-                    P = utils.stats.poiss_count_prob(c, rate, tbin)
-
+                    rate = nprb.utils.model.marginal_posterior_samples(
+                        full_model.mapping, full_model.likelihood.f, covariates, 1000, pick_neurons)
+                    
+                    rate = rate.mean(0).cpu().numpy()  # posterior mean
+                    
+                    P.append(nprb.utils.stats.poiss_count_prob(np.arange(max_count+1), rate, tbin))
+                    
                 else:  # UCM
                     P_mc = nprb.utils.model.compute_UCM_P_count(
                         full_model.mapping,
                         full_model.likelihood,
+                        covariates, 
                         pick_neurons,
-                        None,
-                        cov_samples=10,
-                        ll_samples=1,
-                        tr=0,
+                        MC=30, 
                     )
-                    P = P_mc.mean(0).cpu().numpy()
+                    P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
                     
             P = np.concatenate(P, axis=1)  # count probabilities of shape (neurons, timesteps, count)
                 
             q_ = []
             Z_ = []
-            for n in range(len(pick_neurons)):
-                spike_binned = full_model.likelihood.spikes[0][
+            for n in range(NN):
+                spike_binned = full_model.likelihood.all_spikes[
                     0, pick_neurons[n], :
                 ].numpy()
                 q = nprb.utils.stats.counts_to_quantiles(P[n, ...], spike_binned, rng)
-
+                
                 q_.append(q)
                 Z_.append(nprb.utils.stats.quantile_Z_mapping(q))
-
+                
             Qq.append(q_)
             Zz.append(Z_)
 
-
             Pearson_s = []
-            for n in range(len(pick_neurons)):
-                for m in range(n + 1, len(pick_neurons)):
+            for n in range(NN):
+                for m in range(n + 1, NN):
                     r, r_p = scstats.pearsonr(
                         Z_[n], Z_[m]
                     )  # Pearson r correlation test
@@ -264,42 +236,37 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
 
             r = np.array([p[0] for p in Pearson_s])
             r_p = np.array([p[1] for p in Pearson_s])
-
-            Qq.append(q_)
-            Zz.append(Z_)
+            
             R.append(r)
             Rp.append(r_p)
-
-    fisher_z, fisher_q = [], []
-    for en, r in enumerate(R):
-        fz = 0.5 * np.log((1 + r) / (1 - r)) * np.sqrt(time_steps - 3)
-        fisher_z.append(fz)
-        fisher_q.append(utils.stats.quantile_Z_mapping(fz, inverse=True))
+            
+            ts = fit_dict["spiketrain"].shape[-1]
+            fz = 0.5 * np.log((1 + r) / (1 - r)) * np.sqrt(ts - 3)
+            fisher_z.append(fz)
+            fisher_q.append(nprb.utils.stats.quantile_Z_mapping(fz, inverse=True))
 
     q_DS, T_DS, T_KS = [], [], []
     for q in Qq:
         for qq in q:
-            T_DS, T_KS, sign_DS, sign_KS, p_DS, p_KS = utils.stats.KS_DS_statistics(
+            T_DS_, T_KS_, sign_DS, sign_KS, p_DS, p_KS = nprb.utils.stats.KS_DS_statistics(
                 qq, alpha=0.05, alpha_s=0.05
             )
-            T_DS_.append(T_DS)
-            T_KS_.append(T_KS)
+            T_DS.append(T_DS_)
+            T_KS.append(T_KS_)
 
-            Z_DS = T_DS / np.sqrt(2 / (qq.shape[0] - 1))
-            q_DS_.append(utils.stats.quantile_Z_mapping(Z_DS, inverse=True))
+            Z_DS = T_DS_ / np.sqrt(2 / (qq.shape[0] - 1))
+            q_DS.append(nprb.utils.stats.quantile_Z_mapping(Z_DS, inverse=True))
 
-    q_DS = np.array(q_DS).reshape(len(CV), len(Ms), -1)
-    T_DS = np.array(T_DS).reshape(len(CV), len(Ms), -1)
-    T_KS = np.array(T_KS).reshape(len(CV), len(Ms), -1)
+    q_DS = np.array(q_DS).reshape(len(config_names), len(kcvs), -1)
+    T_DS = np.array(T_DS).reshape(len(config_names), len(kcvs), -1)
+    T_KS = np.array(T_KS).reshape(len(config_names), len(kcvs), -1)
 
     # noise correlation structure
-    NN = len(pick_neurons)
-    
     R_mat_Xp = np.zeros((NN, NN))
     R_mat_X = np.zeros((NN, NN))
     R_mat_XZ = np.zeros((NN, NN))
     for a in range(len(R[0])):
-        n, m = model_utils.ind_to_pair(a, NN)
+        n, m = utils.ind_to_pair(a, NN)
         R_mat_Xp[n, m] = R[0][a]
         R_mat_X[n, m] = R[1][a]
         R_mat_XZ[n, m] = R[2][a]
@@ -334,6 +301,7 @@ def main():
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
+    parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--dataseed", default=1, type=int)
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
@@ -357,6 +325,8 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+        
+    rng = np.random.default_rng(args.seed)
 
     ### names ###
     data_type = "modIP{}".format(args.dataseed)
@@ -373,13 +343,15 @@ def main():
 
     ### analysis ###
     latent_observed_dict = latent_observed(
-        checkpoint_dir, config_names, data_path, data_type, dataset_dict, dev
+        checkpoint_dir, nc_config_names, data_path, data_type, dataset_dict, args.seed, dev
     )
-    variability_dict = variability_stats()
+    variability_dict = variability_stats(
+        checkpoint_dir, nc_config_names, data_path, dataset_dict, rng, dev
+    )
 
     ### export ###
     data_run = {
-        "latent": latent_dict,
+        "latent_observed": latent_observed_dict,
         "variability": variability_dict,
     }
 

@@ -3,16 +3,16 @@ import torch.nn as nn
 
 
 def _expand_cov(cov):
-    if len(cov.shape) == 1:  # expand arrays from (timesteps,)
+    if len(cov.shape) == 1:  # expand arrays from (ts,)
         cov = cov[None, None, :, None]
-    elif len(cov.shape) == 2:  # expand arrays (timesteps, dims)
+    elif len(cov.shape) == 2:  # expand arrays (ts, dims)
         cov = cov[None, None, ...]
     elif len(cov.shape) == 3:
-        cov = cov[None, ...]  # expand arrays (out, timesteps, dims)
+        cov = cov[None, ...]  # expand arrays (out, ts, dims)
 
-    if len(cov.shape) != 4:  # trials, out, timesteps, dims
+    if len(cov.shape) != 4:  # trials, out, ts, dims
         raise ValueError(
-            "Shape of input covariates at most trials x out x timesteps x dims"
+            "Largest shape of input covariates is (trials, out_dims, ts, in_dims)"
         )
 
     return cov
@@ -35,14 +35,9 @@ class _input_mapping(nn.Module):
         """
         Constructor for the input mapping class.
 
-        :param int neurons: the number of neurons or output dimensions of the model
-        :param string inv_link: the name of the inverse link function
         :param int input_dims: the number of input dimensions in the covariates array of the model
-        :param list VI_tuples: a list of variational inference tuples (prior, var_dist, topology, dims),
-                               note that dims specifies the shape of the corresponding distribution and
-                               is also the shape expected for regressors corresponding to this block as
-                               (timesteps, dims). If dims=1, it is treated as a scalar hence X is then
-                               of shape (timesteps,)
+        :param int out_dims: the number of output dimensions of the model
+        :param List active_dims: indices of dimensions in input selected by the model
         """
         super().__init__()
         self.register_buffer("dummy", torch.empty(0))  # keeping track of device
@@ -59,15 +54,6 @@ class _input_mapping(nn.Module):
                 "Active dimensions do not match expected number of input dimensions"
             )
         self.active_dims = active_dims  # dimensions to select from input covariates
-
-        """if isinstance(inv_link, types.LambdaType):
-            self.f = inv_link
-            inv_link = 'custom'
-        elif _inv_link_functions.get(inv_link) is None:
-            raise NotImplementedError('Link function is not supported')
-        else:
-            self.f = _inv_link_functions[inv_link]
-        self.inv_link = inv_link"""
 
     def compute_F(self, XZ):
         """
@@ -116,15 +102,14 @@ class _input_mapping(nn.Module):
             )
         return XZ[..., self.active_dims]
 
-    def to_XZ(self, covariates, trials=1):
+    def to_XZ(self, covariates_list, trials=1):
         """
-        Convert covariates list input to tensors for input to mapping. Convenience function for rate
-        evaluation functions and sampling functions.
+        Convert covariates list of tensors to a single input tensors for mappings.
         """
         cov_list = []
         timesteps = None
         out_dims = 1  # if all shared across output dimensions
-        for cov_ in covariates:
+        for cov_ in covariates_list:
             cov_ = _expand_cov(cov_.type(self.tensor_type))
 
             if cov_.shape[1] > 1:

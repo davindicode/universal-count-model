@@ -32,8 +32,7 @@ def model_icons(fig):
 
         ax = fig.add_subplot(spec[0, 0])
 
-        pgm = daft.PGM(shape=(2, 2), node_unit=0.7)
-        init_figax(pgm, fig, ax)
+        pgm = utils.plots.daft_init_figax(fig, ax, shape=(2, 2), node_unit=0.7)
 
         pgm.add_node("y", r"$y_n$", 0.7 + Xoff, 0.6 + Yoff, observed=True, fontsize=12)
         if l == 0:
@@ -54,10 +53,15 @@ def model_icons(fig):
             shift=0.1,
         )
 
-        render(pgm)
+        utils.plots.daft_render(pgm)
 
 
-def regression_scores(fig):
+def regression_scores(fig, regression_dict, variability_dict):
+    ### data ###
+    T_KS = variability_dict["T_KS"]
+    RG_cv_ll = regression_dict["RG_cv_ll"]
+    
+    ### plot ###
     widths = [1]
     heights = np.ones(2)
     spec = fig.add_gridspec(
@@ -73,7 +77,7 @@ def regression_scores(fig):
     )
 
     eps = 0.4
-    Ncases = T_KS_rg.shape[1] - 1
+    Ncases = T_KS.shape[1] - 1
 
     # RG
     ax = fig.add_subplot(spec[0, 0])
@@ -101,7 +105,6 @@ def regression_scores(fig):
         yerr=rel_score.std(-1, ddof=1)[1:] / np.sqrt(rel_score.shape[-1]),
         c="k",
     )
-    # ax.set_ylim()
 
     ax.set_xticks(np.arange(RG_cv_ll.shape[0]))
     ax.set_xticklabels([])
@@ -129,7 +132,21 @@ def regression_scores(fig):
     ax.set_xticklabels(["Poisson", "hNB", "U (GP)", "U (ANN)"], rotation=90)  # , 'GT'])
 
 
-def count_tuning(fig):
+def count_tuning(fig, regression_dict):
+    ### data ###
+    ref_prob = regression_dict["ref_prob"]
+    P_rg = regression_dict["P_rg"]
+    max_count = P_rg.shape[-1] - 1
+    
+    hd = regression_dict["hd"]
+    gt_mean = regression_dict["gt_mean"]
+    gt_FF = regression_dict["gt_FF"]
+    
+    cntlower, cntmedian, cntupper = regression_dict["cnt_percentiles"]
+    avglower, avgmedian, avgupper = regression_dict["avg_percentiles"]
+    FFlower, FFmedian, FFupper = regression_dict["FF_percentiles"]
+    
+    ### plot ###
     cx = np.arange(max_count + 1)
     plot_cnt = 11
 
@@ -175,9 +192,9 @@ def count_tuning(fig):
             for pp in range(plot_cnt):
                 l = "fit" if (enn == 0 and pp == 0) else None
                 XX = np.linspace(cx[pp] - 0.5, cx[pp] + 0.5, 2)
-                YY = np.ones(2) * cmean[n, enn, pp]
-                YY_l = np.ones(2) * clower[n, enn, pp]
-                YY_u = np.ones(2) * cupper[n, enn, pp]
+                YY = np.ones(2) * cntmedian[n, enn, pp]
+                YY_l = np.ones(2) * cntlower[n, enn, pp]
+                YY_u = np.ones(2) * cntupper[n, enn, pp]
                 (line,) = ax.plot(XX, YY, c=c[enn], label=l, alpha=0.3)
                 ax.fill_between(XX, YY_l, YY_u, color=line.get_color(), alpha=0.3)
 
@@ -241,15 +258,15 @@ def count_tuning(fig):
             ax.set_xticklabels(["", "", "", "", "", 5, "", "", "", "", 10])
 
         ax = fig.add_subplot(spec[3, 0])
-        (line,) = ax.plot(covariates[0], avgmean[n, :], color="tab:blue")
+        (line,) = ax.plot(hd, avgmedian[n, :], color="tab:blue")
         ax.fill_between(
-            covariates[0],
+            hd,
             avglower[n, :],
             avgupper[n, :],
             color=line.get_color(),
             alpha=0.3,
         )
-        ax.plot(covariates[0], grate[n, :] * tbin, "k--")
+        ax.plot(hd, gt_mean[n, :], "k--")
         ax.set_ylim(0, 5.0)
         if en == 0:
             ax.set_ylabel("mean", fontsize=10)
@@ -260,16 +277,16 @@ def count_tuning(fig):
         ax.set_xticks([0, 2 * np.pi])
 
         ax = fig.add_subplot(spec[5, 0])
-        (line,) = ax.plot(covariates[0], ffmean[n, :], color="tab:blue")
+        (line,) = ax.plot(hd, FFmedian[n, :], color="tab:blue")
         ax.fill_between(
-            covariates[0],
-            fflower[n, :],
-            ffupper[n, :],
+            hd,
+            FFlower[n, :],
+            FFupper[n, :],
             color=line.get_color(),
             alpha=0.3,
         )
         ax.set_ylim(0.4, 1.4)
-        ax.plot(covariates[0], gFF[n, :], "k--")
+        ax.plot(hd, gt_FF[n, :], "k--")
         ax.set_xticks([0, 2 * np.pi])
         if en == 0:
             ax.set_ylabel("FF", fontsize=10, labelpad=0)
@@ -283,7 +300,20 @@ def count_tuning(fig):
     fig.text(0.34, -0.675, r"head direction $x$", ha="center", fontsize=10)
 
 
-def latent_variables(fig):
+def latent_variables(fig, regression_dict, latent_dict):
+    ### data ###
+    hd = regression_dict["hd"]
+    gt_mean = regression_dict["gt_mean"]
+    gt_FF = regression_dict["gt_FF"]
+    
+    covariates_aligned = latent_dict["covariates_aligned"]
+    latent_mu = latent_dict["latent_mu"]
+    latent_std = latent_dict["latent_std"]
+    
+    comp_avg = latent_dict["comp_avg"]
+    comp_FF = latent_dict["comp_FF"]
+    
+    ### plot ###
     widths = np.ones(1)
     heights = np.ones(1)
     spec = fig.add_gridspec(
@@ -299,6 +329,7 @@ def latent_variables(fig):
 
     ax = fig.add_subplot(spec[0, 0])
 
+    tbin = 0.1
     T = 300
     T_start = 0
 
@@ -314,7 +345,7 @@ def latent_variables(fig):
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        rhd_t[T_start : T_start + T] % (2 * np.pi),
+        hd[T_start : T_start + T] % (2 * np.pi),
         None,
         col="k",
         linewidth=1.0,
@@ -325,8 +356,8 @@ def latent_variables(fig):
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        lat_t_[0][T_start : T_start + T],
-        lat_std_[0][T_start : T_start + T],
+        latent_mu[0][T_start : T_start + T],
+        latent_std[0][T_start : T_start + T],
         col="tab:blue",
         linewidth=0.7,
         step=1,
@@ -338,8 +369,8 @@ def latent_variables(fig):
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        lat_t_[1][T_start : T_start + T],
-        lat_std_[1][T_start : T_start + T],
+        latent_mu[1][T_start : T_start + T],
+        latent_std[1][T_start : T_start + T],
         col="tab:green",
         linewidth=0.7,
         step=1,
@@ -381,8 +412,8 @@ def latent_variables(fig):
 
         ax.set_aspect(1)
         ax.scatter(
-            rhd_t[: lat_t_[l].shape[0]],
-            lat_t_[l],
+            hd[: latent_mu[l].shape[0]],
+            latent_mu[l],
             marker=".",
             s=1,
             alpha=0.5,
@@ -402,9 +433,9 @@ def latent_variables(fig):
         lower, mean, upper = comp_avg[l]
         (line,) = ax.plot(covariates[0], mean[n], color=col_[l])
         ax.fill_between(
-            covariates[0], lower[n], upper[n], color=line.get_color(), alpha=0.3
+            covariates_aligned, lower[n], upper[n], color=line.get_color(), alpha=0.3
         )
-        ax.plot(covariates[0], grate[n, :] * tbin, "k--")
+        ax.plot(hd, gt_mean[n, :], "k--")
         if l == 0:
             ax.set_ylabel("mean", fontsize=10)
         ax.set_xlim([0, 2 * np.pi])
@@ -415,12 +446,12 @@ def latent_variables(fig):
             ax.set_yticklabels([])
 
         ax = fig.add_subplot(spec[2, l])
-        lower, mean, upper = comp_ff[l]
-        (line,) = ax.plot(covariates[0], mean[n, :], color=col_[l])
+        lower, mean, upper = comp_FF[l]
+        (line,) = ax.plot(covariates_aligned, mean[n, :], color=col_[l])
         ax.fill_between(
-            covariates[0], lower[n, :], upper[n, :], color=line.get_color(), alpha=0.3
+            covariates_aligned, lower[n, :], upper[n, :], color=line.get_color(), alpha=0.3
         )
-        ax.plot(covariates[0], gFF[n, :], "k--")
+        ax.plot(hd, gt_FF[n, :], "k--")
         if l == 0:
             ax.set_ylabel("FF", fontsize=10)
         ax.set_xticks([0, 2 * np.pi])
@@ -444,7 +475,11 @@ def latent_variables(fig):
     )
 
 
-def LVM_scores(fig):
+def LVM_scores(fig, latent_dict):
+    ### data ###
+    LVM_cv_ll = latent_dict["LVM_cv_ll"]
+    
+    ### plot ###
     widths = np.ones(1)
     heights = np.ones(2)
     spec = fig.add_gridspec(
@@ -464,9 +499,7 @@ def LVM_scores(fig):
     ax = fig.add_subplot(spec[0, 0])
     fact = 10**4
     ax.set_xlim(-eps, Ncases + eps)
-    scores = np.transpose(LVM_cv_ll, (1, 0, 2)).mean(
-        -1
-    )  # .reshape(LVM_cv_ll.shape[1], -1)
+    scores = np.transpose(LVM_cv_ll, (1, 0, 2)).mean(-1)
     scores_err = scores.std(-1) / np.sqrt(scores.shape[-1] - 1)
     rel_score = (scores - scores[0:1, :]) / fact * (len(use_neuron) / 5)
 
@@ -516,7 +549,11 @@ def LVM_scores(fig):
     ax.set_ylabel("RMSE", fontsize=10)
 
 
-def noise_correlations(fig):
+def noise_correlations(fig, variability_dict):
+    ### data ###
+    
+    
+    ### plot ###
     names = ["Poisson", "Universal (X)", "Universal (X,Z)"]
     delX = 0.22
     Yoff = -0.25
@@ -545,8 +582,7 @@ def noise_correlations(fig):
             ha="center",
         )
 
-        pgm = daft.PGM(shape=(2, 2), node_unit=0.7)
-        init_figax(pgm, fig, ax)
+        pgm = utils.plots.daft_init_figax(pgm, fig, ax, shape=(2, 2), node_unit=0.7)
 
         pgm.add_node("y", r"$y_n$", 0.7 + Xoff, 0.6 + Yoff, observed=True, fontsize=12)
         if l == 0 or l == 1:
@@ -572,7 +608,7 @@ def noise_correlations(fig):
             shift=0.1,
         )
 
-        render(pgm)
+        utils.plots.daft_render(pgm)
 
     Xoff = 0.03
     aa = [np.argsort(R[0])[-2]]
@@ -779,7 +815,19 @@ def noise_correlations(fig):
     ax.axis("off")
 
 
-def latent_observed_tuning(fig):
+def latent_observed_tuning(fig, latent_observed_dict):
+    ### data
+    cv_Ell = latent_observed_dict["cv_Ell"]
+    covariates_a = latent_observed_dict["covariates_a"]
+    avglower, avgmedian, avgupper = latent_observed_dict["avg_percentiles"]
+    FFlower, FFmedian, FFupper = latent_observed_dict["FF_percentiles"]
+    X_c = latent_observed_dict["X_c"]
+    X_s = latent_observed_dict["X_s"]
+    
+    gt_a = latent_observed_dict["gt_a"]
+    gt_mean = latent_observed_dict["gt_mean"]
+    gt_FF = latent_observed_dict["gt_FF"]
+    
     ### XZ tuning ###
     widths = [1]
     heights = [1]
@@ -796,7 +844,7 @@ def latent_observed_tuning(fig):
 
     ax = fig.add_subplot(spec[0, 0])
     fact = 10**3
-    scores = cv_pll.mean(-1)  # reshape(cv_pll.shape[0], -1)
+    scores = cv_Ell.mean(-1)  # reshape(cv_pll.shape[0], -1)
     scores_err = scores.std(-1) / np.sqrt(scores.shape[-1] - 1)
     rel_score = (scores - scores[0:1, :]) / fact * (len(use_neuron) / 5)
     # ax.plot(np.linspace(-eps, Ncases+eps, 2), np.zeros(2), 'gray', alpha=.5)
@@ -929,15 +977,15 @@ def latent_observed_tuning(fig):
     for en, n in enumerate([30, 6, 15]):
         ax = fig.add_subplot(spec[0, en])
 
-        (line,) = ax.plot(covariates_z[1], avgmeanz[n, :])
+        (line,) = ax.plot(covariates_a, avgmedian[n, :])
         ax.fill_between(
-            covariates_z[1],
-            avglowerz[n, :],
-            avgupperz[n, :],
+            covariates_a,
+            avglower[n, :],
+            avgupper[n, :],
             color=line.get_color(),
             alpha=0.3,
         )
-        ax.plot(covariates_z[1], gratez[n, :] * tbin, "k--")
+        ax.plot(covariates_z[1], gt_mean[n, :], "k--")
         if en == 0:
             ax.set_ylabel("mean", fontsize=10)
 
@@ -962,21 +1010,18 @@ def main():
 
     datarun = pickle.load(open(save_dir + "modIP_results.p", "rb"))
 
-    latent_dict_modIP = datarun["latent"]
-    correlations_modIP = datarun["correlations"]
+    latent_observed_modIP = datarun["latent_observed"]
+    variability_modIP = datarun["variability"]
 
     # plot
     fig = plt.figure(figsize=(8, 2))
     fig.text(-0.04, 1.1, "A", fontsize=15, fontweight="bold")
     fig.text(-0.04, -0.95, "B", fontsize=15, fontweight="bold")
 
-    rhd_t = rcov[0]
-    ra_t = rcov_ll[1]
-
     ### regression ###
     model_icons(fig)
-    regression_scores(fig)
-    count_tuning(fig)
+    regression_scores(fig, regression_hCMP, variability_hCMP)
+    count_tuning(fig, regression_hCMP)
 
     # line
     Yoff = 0.0
@@ -999,12 +1044,12 @@ def main():
     ax.axis("off")
 
     ### LVM ###
-    latent_variables(fig)
-    LVM_scores(fig)
+    latent_variables(fig, latent_dict_hCMP)
+    LVM_scores(fig, latent_dict_hCMP)
 
     ### noise correlations ###
-    noise_correlations(fig)
-    latent_observed_tuning(fig)
+    noise_correlations(fig, variability_modIP)
+    latent_observed_tuning(fig, latent_observed_modIP)
 
     plt.savefig(save_dir + "plot_synthetic.pdf")
 

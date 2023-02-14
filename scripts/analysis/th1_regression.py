@@ -636,6 +636,160 @@ def tunings(model_name):
     }
     
     
+    # special joint tuning curves
+    
+    ### hd omega ###
+    grid_size_hdw = (51, 41)
+    grid_shape_hdw = [[0, 2 * np.pi], [-10.0, 10.0]]
+
+    steps = np.product(grid_size_hdw)
+    A, B = grid_size_hdw
+    covariates = [
+        np.linspace(0, 2 * np.pi, A)[:, None].repeat(B, axis=1).flatten(),
+        np.linspace(-10.0, 10.0, B)[None, :].repeat(A, axis=0).flatten(),
+        0.0 * np.ones(steps),
+        (left_x + right_x) / 2.0 * np.ones(steps),
+        (bottom_y + top_y) / 2.0 * np.ones(steps),
+        0.0 * np.ones(steps),
+    ]
+
+    P_mean = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+    field_hdw = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
+
+
+    # compute preferred HD
+    grid = (101, 21)
+    grid_shape = [[0, 2 * np.pi], [-10.0, 10.0]]
+
+    steps = np.product(grid)
+    A, B = grid
+
+    w_arr = np.linspace(-10.0, 10.0, B)
+    covariates = [
+        np.linspace(0, 2 * np.pi, A)[:, None].repeat(B, axis=1).flatten(),
+        w_arr[None, :].repeat(A, axis=0).flatten(),
+        0.0 * np.ones(steps),
+        (left_x + right_x) / 2.0 * np.ones(steps),
+        (bottom_y + top_y) / 2.0 * np.ones(steps),
+        0.0 * np.ones(steps),
+    ]
+
+    P_mean = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+    field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
+
+
+    Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
+    Z = Z[None, :].reshape(-1, A, B)
+    pref_hdw = np.angle((Z * field).mean(1)) % (2 * np.pi)  # neurons, w
+
+
+    # ATI
+    ATI = []
+    res_var = []
+    for k in range(neurons):
+        _, a, shift, losses = utils.signal.circ_lin_regression(
+            pref_hdw[k, :], w_arr / (2 * np.pi), dev="cpu", iters=1000, lr=1e-2
+        )
+        ATI.append(-a)
+        res_var.append(losses[-1])
+    ATI = np.array(ATI)
+    res_var = np.array(res_var)
+
+    
+    ### hd_t ###
+    grid_size_hdt = (51, 41)
+    grid_shape_hdt = [[0, 2 * np.pi], [0.0, TT]]
+
+    steps = np.product(grid_size_hdt)
+    A, B = grid_size_hdt
+    covariates = [
+        np.linspace(0, 2 * np.pi, A)[:, None].repeat(B, axis=1).flatten(),
+        0.0 * np.ones(steps),
+        0.0 * np.ones(steps),
+        (left_x + right_x) / 2.0 * np.ones(steps),
+        (bottom_y + top_y) / 2.0 * np.ones(steps),
+        np.linspace(0.0, TT, B)[None, :].repeat(A, axis=0).flatten(),
+    ]
+
+    P_mean = (
+        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC_).mean(0).cpu()
+    )
+    field_hdt = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
+
+
+    # drift and similarity matrix
+    grid = (201, 16)
+    grid_shape = [[0, 2 * np.pi], [0.0, TT]]
+
+    steps = np.product(grid)
+    A, B = grid
+
+    t_arr = np.linspace(0.0, TT, B)
+    dt_arr = t_arr[1] - t_arr[0]
+    covariates = [
+        np.linspace(0, 2 * np.pi, A)[:, None].repeat(B, axis=1).flatten(),
+        0.0 * np.ones(steps),
+        0.0 * np.ones(steps),
+        (left_x + right_x) / 2.0 * np.ones(steps),
+        (bottom_y + top_y) / 2.0 * np.ones(steps),
+        t_arr[None, :].repeat(A, axis=0).flatten(),
+    ]
+
+    P_mean = (
+        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC_).mean(0).cpu()
+    )
+    field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
+
+
+    Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
+    Z = Z[None, :].reshape(-1, A, B)
+    E_exp = (Z * field).sum(-2) / field.sum(-2)
+    pref_hdt = np.angle(E_exp) % (2 * np.pi)  # neurons, t
+
+    tun_width = 1.0 - np.abs(E_exp)
+    amp_t = field.mean(-2)  # mean amplitude
+    ampm_t = field.max(-2)
+
+    sim_mat = []
+    act = (field - field.mean(-2, keepdims=True)) / field.std(-2, keepdims=True)
+    en = np.argsort(pref_hdt, axis=0)
+    for t in range(B):
+        a = act[en[:, t], :, t]
+        sim_mat = (a[:, None, :] * a[None, ...]).mean(-1)
+
+
+    drift = []
+    res_var_drift = []
+    for k in range(len(pick_neuron)):
+        _, a, shift, losses = utils.signal.circ_lin_regression(
+            pref_hdt[k, :], t_arr / (2 * np.pi) / 1e2, dev="cpu", iters=1000, lr=1e-2
+        )
+        drift.append(a / 1e2)
+        res_var_drift.append(losses[-1])
+    drift = np.array(drift)
+    res_var_drift = np.array(res_var_drift)
+
+
+    joint_tunings = {
+        grid_size_hdw,
+        grid_shape_hdw,
+        field_hdw,
+        grid_size_hdt,
+        grid_shape_hdt,
+        field_hdt,
+        pref_hdw,
+        ATI,
+        res_var,
+        pref_hdt,
+        drift,
+        res_var_drift,
+        tun_width,
+        amp_t,
+        ampm_t,
+        sim_mat,
+    }
+    
+    
     # conditional tuning curves
     MC = 300
     MC_ = 100
@@ -841,28 +995,6 @@ def tunings(model_name):
         grid_shape_pos,
         avg_pos,
         FF_pos,
-    }
-    
-    
-    
-    # special joint tuning curves
-    joint_tunings = {
-        grid_size_hdw,
-        grid_shape_hdw,
-        field_hdw,
-        grid_size_hdt,
-        grid_shape_hdt,
-        field_hdt,
-        pref_hdw,
-        ATI,
-        res_var,
-        pref_hdt,
-        drift,
-        res_var_drift,
-        tun_width,
-        amp_t,
-        ampm_t,
-        sim_mat,
     }
     
 

@@ -17,13 +17,13 @@ def marginal_posterior_samples(
     :returns: F of shape (MCxtrials, outdims, time)
     """
     cov = mapping.to_XZ(covariates, trials)
-    if mapping.MC_only:
-        samples = mapping.sample_F(cov)[:, F_dims, :]
-        
-    else:
-        F_mu, F_var = mapping.compute_F(cov)
-        with torch.no_grad():
-            samples = mc_gen(F_mu[:, F_dims, :], F_var[:, F_dims, :], MC, list(range(len(F_dims))))
+    with torch.no_grad():
+        if mapping.MC_only:
+            samples = mapping.sample_F(cov)[:, F_dims, :]
+
+        else:
+            F_mu, F_var = mapping.compute_F(cov)
+            samples = mc_gen(F_mu, F_var, MC, F_dims)
         
     samples = inv_link(samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples)
     return samples
@@ -39,7 +39,8 @@ def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):
         dtype=mapping.tensor_type,
         device=mapping.dummy.device,
     )
-    samples = mapping.sample_F(cov, eps)
+    with torch.no_grad():
+        samples = mapping.sample_F(cov, eps)
     
     if trials > 1:
         samples = samples.view(-1, trials, *samples.shape[1:])
@@ -54,7 +55,6 @@ def sample_Y(mapping, likelihood, covariates, trials, MC=1):
     cov = mapping.to_XZ(covariates, trials)
 
     with torch.no_grad():
-
         F_mu, F_var = mapping.compute_F(cov)
         rate = likelihood.sample_rate(
             F_mu, F_var, trials, MC
