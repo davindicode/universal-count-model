@@ -5,8 +5,12 @@ import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as scstats
 
 import torch
+
+sys.path.append("../analysis")
+from utils import ind_to_pair
 
 sys.path.append("../..")
 from neuroprob import utils
@@ -78,7 +82,7 @@ def regression_scores(fig, regression_dict, variability_dict):
     )
 
     eps = 0.4
-    Ncases = T_KS.shape[1] - 1
+    Ncases = T_KS.shape[0] - 1
 
     # RG
     ax = fig.add_subplot(spec[0, 0])
@@ -87,7 +91,7 @@ def regression_scores(fig, regression_dict, variability_dict):
     scores = RG_cv_ll
     score_err = scores.std(-1) / np.sqrt(scores.shape[-1] - 1)
     rel_score = (scores - scores[0:1, :]) / fact
-    # ax.plot(np.linspace(-eps, Ncases+eps, 2), np.zeros(2), 'gray', alpha=.5)
+    
     ax.plot(
         np.arange(scores.shape[0])[:, None].repeat(scores.shape[1], axis=1),
         rel_score,
@@ -135,10 +139,11 @@ def regression_scores(fig, regression_dict, variability_dict):
 
 def count_tuning(fig, regression_dict):
     ### data ###
+    eval_hd_inds = regression_dict["eval_hd_inds"]
     gt_P_count = regression_dict["gt_P_count"]
     UCM_P_count = regression_dict["UCM_P_count"]
     max_count = UCM_P_count.shape[-1] - 1
-    neurons = ref_gt_P_countprob.shape[1]
+    neurons = gt_P_count.shape[1]
 
     covariates_hd = regression_dict["covariates_hd"]
     gt_mean = regression_dict["gt_mean"]
@@ -149,7 +154,7 @@ def count_tuning(fig, regression_dict):
     FFlower, FFmedian, FFupper = regression_dict["FF_percentiles"]
 
     ### plot ###
-    use_neuron = list(range(neurons))
+    pick_neurons = list(range(neurons))
 
     cx = np.arange(max_count + 1)
     plot_cnt = 11
@@ -178,7 +183,7 @@ def count_tuning(fig, regression_dict):
         fig.text(
             0.29 + delx * en,
             0.91,
-            "neuron {}".format(use_neuron[n] + 1),
+            "neuron {}".format(pick_neurons[n] + 1),
             fontsize=11,
             ha="center",
         )
@@ -220,14 +225,13 @@ def count_tuning(fig, regression_dict):
         # ax.set_xlabel('count')
 
         ax = fig.add_subplot(spec[1, 0])
-        im = utils.plots.draw_2d(
-            (fig, ax),
+        im = ax.imshow(
             UCM_P_count[n, :, :plot_cnt],
             origin="lower",
             cmap="gray_r",
             vmin=0,
             vmax=UCM_P_count[n, :, :plot_cnt].max(),
-            interp_method="nearest",
+            interpolation="nearest",
         )
 
         # arrows
@@ -262,9 +266,9 @@ def count_tuning(fig, regression_dict):
             ax.set_xticklabels(["", "", "", "", "", 5, "", "", "", "", 10])
 
         ax = fig.add_subplot(spec[3, 0])
-        (line,) = ax.plot(hd, avgmedian[n, :], color="tab:blue")
+        (line,) = ax.plot(covariates_hd, avgmedian[n, :], color="tab:blue")
         ax.fill_between(
-            hd,
+            covariates_hd,
             avglower[n, :],
             avgupper[n, :],
             color=line.get_color(),
@@ -310,10 +314,11 @@ def latent_variables(fig, regression_dict, latent_dict):
     gt_mean = regression_dict["gt_mean"]
     gt_FF = regression_dict["gt_FF"]
 
-    covariates_aligned = latent_dict["covariates_aligned"]
+    gt_hd = latent_dict["gt_hd"]
     latent_mu = latent_dict["latent_mu"]
     latent_std = latent_dict["latent_std"]
 
+    covariates_aligned = latent_dict["covariates_aligned"]
     avg_percentiles = latent_dict["avg_percentiles"]
     FF_percentiles = latent_dict["FF_percentiles"]
 
@@ -349,7 +354,7 @@ def latent_variables(fig, regression_dict, latent_dict):
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        covariates_hd[T_start : T_start + T] % (2 * np.pi),
+        gt_hd[T_start : T_start + T] % (2 * np.pi),
         None,
         col="k",
         linewidth=1.0,
@@ -413,10 +418,10 @@ def latent_variables(fig, regression_dict, latent_dict):
             ax.set_title("U (GP)", fontsize=11)
         else:
             ax.set_title("U (ANN)", fontsize=11)
-
+            
         ax.set_aspect(1)
         ax.scatter(
-            covariates_hd[: latent_mu[l].shape[0]],
+            gt_hd[: latent_mu[l].shape[0]],
             latent_mu[l],
             marker=".",
             s=1,
@@ -435,7 +440,7 @@ def latent_variables(fig, regression_dict, latent_dict):
 
         ax = fig.add_subplot(spec[1, l])
         lower, mean, upper = avg_percentiles[l]
-        (line,) = ax.plot(covariates[0], mean[n], color=col_[l])
+        (line,) = ax.plot(covariates_aligned, mean[n], color=col_[l])
         ax.fill_between(
             covariates_aligned, lower[n], upper[n], color=line.get_color(), alpha=0.3
         )
@@ -486,8 +491,15 @@ def latent_variables(fig, regression_dict, latent_dict):
 def LVM_scores(fig, latent_dict):
     ### data ###
     LVM_cv_ll = latent_dict["LVM_cv_ll"]
-
+    RMS_cv = latent_dict["RMS_cv"]
+    neurons = LVM_cv_ll.shape[-1]
+    
     ### plot ###
+    pick_neurons = list(range(neurons))
+    
+    eps = 0.4
+    Ncases = LVM_cv_ll.shape[0] - 1
+    
     widths = np.ones(1)
     heights = np.ones(2)
     spec = fig.add_gridspec(
@@ -509,7 +521,7 @@ def LVM_scores(fig, latent_dict):
     ax.set_xlim(-eps, Ncases + eps)
     scores = np.transpose(LVM_cv_ll, (1, 0, 2)).mean(-1)
     scores_err = scores.std(-1) / np.sqrt(scores.shape[-1] - 1)
-    rel_score = (scores - scores[0:1, :]) / fact * (len(use_neuron) / 5)
+    rel_score = (scores - scores[0:1, :]) / fact * (len(pick_neurons) / 5)
 
     ax.plot(
         np.arange(scores.shape[0])[:, None].repeat(scores.shape[1], axis=1),
@@ -532,7 +544,6 @@ def LVM_scores(fig, latent_dict):
 
     ax.set_xticks(np.arange(scores.shape[0]))
     ax.set_xticklabels([])
-    # ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax.set_ylabel(r"$\Delta$cvLL ($10^4$)", fontsize=10, labelpad=3)
 
     # RMS
@@ -553,7 +564,6 @@ def LVM_scores(fig, latent_dict):
     ax.set_ylim(0)
     ax.set_xticks(np.arange(cvs))
     ax.set_xticklabels(["Poisson", "hNB", "U (GP)", "U (ANN)"], rotation=90)
-    # ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax.set_ylabel("RMSE", fontsize=10)
 
 
@@ -563,6 +573,7 @@ def noise_correlations(fig, variability_dict):
     Fisher_Z = variability_dict["Fisher_Z"]
     Z_scores = variability_dict["Z_scores"]
     T_DS = variability_dict["T_DS"]
+    neurons = T_DS.shape[-1]
 
     R_Poisson_X = variability_dict["R_Poisson_X"]
     R_Universal_X = variability_dict["R_Universal_X"]
@@ -570,6 +581,8 @@ def noise_correlations(fig, variability_dict):
     datas = [R_Poisson_X, R_Universal_X, R_Universal_XZ]
 
     ### plot ###
+    pick_neurons = list(range(neurons))
+    
     names = ["Poisson", "Universal (X)", "Universal (X,Z)"]
     delX = 0.22
     Yoff = -0.25
@@ -598,7 +611,7 @@ def noise_correlations(fig, variability_dict):
             ha="center",
         )
 
-        pgm = utils.plots.daft_init_figax(pgm, fig, ax, shape=(2, 2), node_unit=0.7)
+        pgm = utils.plots.daft_init_figax(fig, ax, shape=(2, 2), node_unit=0.7)
 
         pgm.add_node("y", r"$y_n$", 0.7 + Xoff, 0.6 + Yoff, observed=True, fontsize=12)
         if l == 0 or l == 1:
@@ -647,7 +660,7 @@ def noise_correlations(fig, variability_dict):
                 top=-1.75 - delY * en,
             )
 
-            n, m = utils.ind_to_pair(a, len(use_neuron_ll))
+            n, m = ind_to_pair(a, len(pick_neurons))
             m_here = m + n + 1
             L = 4.0
 
@@ -776,8 +789,7 @@ def noise_correlations(fig, variability_dict):
         ax = fig.add_subplot(spec[0, 1])
 
         data = datas[en]
-        im = utils.plots.draw_2d(
-            (fig, ax),
+        im = ax.imshow(
             data[:, ::-1],
             origin="lower",
             cmap=weight_map,
@@ -837,17 +849,24 @@ def noise_correlations(fig, variability_dict):
 def latent_observed_tuning(fig, latent_observed_dict):
     ### data
     cv_Ell = latent_observed_dict["cv_Ell"]
+    neurons = cv_Ell.shape[-1]
+    
     covariates_a = latent_observed_dict["covariates_a"]
     avglower, avgmedian, avgupper = latent_observed_dict["avg_percentiles"]
     FFlower, FFmedian, FFupper = latent_observed_dict["FF_percentiles"]
     X_c = latent_observed_dict["X_c"]
     X_s = latent_observed_dict["X_s"]
 
+    gt_hd = latent_observed_dict["gt_hd"]
     gt_a = latent_observed_dict["gt_a"]
+    
     gt_mean = latent_observed_dict["gt_mean"]
     gt_FF = latent_observed_dict["gt_FF"]
 
     ### XZ tuning ###
+    tbin = 0.04  # 40 ms
+    pick_neurons = list(range(neurons))
+    
     widths = [1]
     heights = [1]
     spec = fig.add_gridspec(
@@ -865,8 +884,8 @@ def latent_observed_tuning(fig, latent_observed_dict):
     fact = 10**3
     scores = cv_Ell.mean(-1)  # reshape(cv_pll.shape[0], -1)
     scores_err = scores.std(-1) / np.sqrt(scores.shape[-1] - 1)
-    rel_score = (scores - scores[0:1, :]) / fact * (len(use_neuron) / 5)
-    # ax.plot(np.linspace(-eps, Ncases+eps, 2), np.zeros(2), 'gray', alpha=.5)
+    rel_score = (scores - scores[0:1, :]) / fact * (len(pick_neurons) / 5)
+    
     ax.plot(
         np.arange(scores.shape[0])[:, None].repeat(scores.shape[1], axis=1),
         rel_score,
@@ -892,7 +911,6 @@ def latent_observed_tuning(fig, latent_observed_dict):
 
     ax.set_xticks(np.arange(scores.shape[0]))
     ax.set_xticklabels(["Poisson", "U (X)", "U (X,Z)"])
-    # ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax.set_ylabel(r"$\Delta$cvLL ($10^3$)", fontsize=10)
 
     fig.text(0.86, -1.55, "Universal (X,Z)", fontsize=12, ha="center")
@@ -912,7 +930,7 @@ def latent_observed_tuning(fig, latent_observed_dict):
 
     ax = fig.add_subplot(spec[0, 0])
     T = 501
-    ts = np.arange(T) * tbin_ll
+    ts = np.arange(T) * tbin
     (line,) = ax.plot(ts, X_c[:T], alpha=0.5)
     ax.fill_between(
         ts,
@@ -922,26 +940,24 @@ def latent_observed_tuning(fig, latent_observed_dict):
         alpha=0.3,
         label="inferred",
     )
-    ax.plot(ts, ra_t[:T], "k--", label="truth")
+    ax.plot(ts, gt_a[:T], "k--", label="truth")
     ax.set_ylabel(r"$z$", labelpad=5, fontsize=10)
     ax.set_xlim([0, ts[-1]])
     ax.set_xticks([0, ts[-1]])
     ax.set_xticklabels([])
     ax.set_yticks([-1, 0, 1])
     ax.set_yticklabels([-1, "", 1])
-    # ax.set_xlabel('{} s'.format(int(ts[-1])), labelpad=2, color='gray')
     leg = ax.legend(handlelength=1.0, bbox_to_anchor=(2.1, 1.2), loc="upper right")
     for l in leg.get_lines()[1:]:
         l.set_linewidth(3)
-    # leg.get_lines()[0].set_linestyle('--')
 
     T = 501
-    ts = np.arange(T) * tbin_ll
+    ts = np.arange(T) * tbin
     ax = fig.add_subplot(spec[1, 0])
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        rhd_t[:T] % (2 * np.pi),
+        gt_hd[:T] % (2 * np.pi),
         None,
         col="k",
         linewidth=0.7,
@@ -970,8 +986,8 @@ def latent_observed_tuning(fig, latent_observed_dict):
     )
 
     ax = fig.add_subplot(spec[0, 0])
-    ax.scatter(ra_t, X_c, marker=".", alpha=0.5)
-    Ra = np.linspace(ra_t.min() - 0.3, ra_t.max() + 0.3, 2)
+    ax.scatter(gt_a, X_c, marker=".", alpha=0.5)
+    Ra = np.linspace(gt_a.min() - 0.3, gt_a.max() + 0.3, 2)
     ax.set_xlim(Ra[0], Ra[-1])
     ax.plot(Ra, Ra, "k")
     ax.set_aspect("equal")
@@ -1004,7 +1020,7 @@ def latent_observed_tuning(fig, latent_observed_dict):
             color=line.get_color(),
             alpha=0.3,
         )
-        ax.plot(covariates_z[1], gt_mean[n, :], "k--")
+        ax.plot(covariates_a, gt_mean[n, :], "k--")
         if en == 0:
             ax.set_ylabel("mean", fontsize=10)
 
@@ -1063,7 +1079,7 @@ def main():
     ax.axis("off")
 
     ### LVM ###
-    latent_variables(fig, latent_dict_hCMP)
+    latent_variables(fig, regression_hCMP, latent_dict_hCMP)
     LVM_scores(fig, latent_dict_hCMP)
 
     ### noise correlations ###

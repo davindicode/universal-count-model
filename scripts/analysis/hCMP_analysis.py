@@ -17,7 +17,7 @@ import models
 import utils
 
 
-def regression(checkpoint_dir, config_names, dataset_dict, device):
+def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -25,7 +25,6 @@ def regression(checkpoint_dir, config_names, dataset_dict, device):
 
     ### cross-validation of regression models ###
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
-    batch_info = 5000  # batch size for cross-validation
 
     RG_cv_ll = []
     for name in config_names:
@@ -55,11 +54,10 @@ def regression(checkpoint_dir, config_names, dataset_dict, device):
     RG_cv_ll = np.array(RG_cv_ll).reshape(len(config_names), len(kcvs))
 
     ### tuning curves of ground truth model ###
-    hCMP = np.load(data_path + "hCMP1.npz")
-    hd = hCMP["covariates"][:, 0]
+    hd = gt_hCMP["covariates"][:, 0]
 
-    gt_lamb = hCMP["gt_lamb"]
-    gt_nu = hCMP["gt_nu"]
+    gt_lamb = gt_hCMP["gt_lamb"]
+    gt_nu = gt_hCMP["gt_nu"]
 
     gt_mean = nprb.utils.stats.cmp_moments(1, gt_lamb, gt_nu, tbin, J=10000)
     gt_var = (
@@ -71,7 +69,6 @@ def regression(checkpoint_dir, config_names, dataset_dict, device):
     x_counts = torch.arange(max_count + 1)
 
     U_gp_config_name = config_names[2] + "-1"
-    batch_info = 5000
 
     full_model, _, _, _ = models.load_model(
         U_gp_config_name,
@@ -139,7 +136,7 @@ def regression(checkpoint_dir, config_names, dataset_dict, device):
     return regression_dict
 
 
-def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
+def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -149,7 +146,6 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     Qq, Zz = [], []
 
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
-    batch_info = 1000  # batch size for cross-validation
 
     RG_cv_ll = []
     for name in config_names:
@@ -272,7 +268,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     return variability_dict
 
 
-def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
+def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
     gt_hd = dataset_dict["covariates"]["hd"]
@@ -286,8 +282,6 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     n_group = np.arange(5)
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     val_neuron = [n_group, n_group + 10, n_group + 20, n_group + 30, n_group + 40]
-
-    batch_info = 5000
 
     LVM_cv_ll = []
     for name in config_names:
@@ -318,7 +312,7 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
                         f_neuron,
                         v_neuron,
                         beta=0.0,
-                        max_iters=3000,
+                        max_iters=3,
                     )
 
                     if ll < prev_ll:
@@ -333,8 +327,6 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     ### aligning trajectory and computing RMS for different models ###
     splits = 90  # split trajectory into 90 parts
     kcvs = [15, 30, 45, 60, 75]
-
-    batch_info = 5000
 
     RMS_cv = []
     for name in config_names:
@@ -434,9 +426,10 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     latent_dict = {
         "LVM_cv_ll": LVM_cv_ll,
         "RMS_cv": RMS_cv,
-        "covariates_aligned": covariates_aligned,
+        "gt_hd": gt_hd, 
         "latent_mu": latent_mu,
         "latent_std": latent_std,
+        "covariates_aligned": covariates_aligned,
         "avg_percentiles": comp_avg,
         "FF_percentiles": comp_FF,
     }
@@ -460,12 +453,15 @@ def main():
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
+    parser.add_argument("--batch_size", default=5000, type=int)
+    
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
 
     args = parser.parse_args()
-
+    batch_info = args.batch_size
+    
     ### setup ###
     save_dir = args.savedir
     data_path = args.datadir
@@ -501,14 +497,17 @@ def main():
     ### load dataset ###
     bin_size = 1
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
+    gt_hCMP = np.load(data_path + data_type + ".npz")
 
     ### analysis ###
-    regression_dict = regression(checkpoint_dir, reg_config_names, dataset_dict, device)
+    regression_dict = regression(
+        checkpoint_dir, reg_config_names, dataset_dict, gt_hCMP, batch_info, device
+    )
     variability_dict = variability_stats(
-        checkpoint_dir, reg_config_names, dataset_dict, rng, device
+        checkpoint_dir, reg_config_names, dataset_dict, rng, batch_info, device
     )
     latent_dict = latent_variable(
-        checkpoint_dir, lat_config_names, dataset_dict, args.seed, device
+        checkpoint_dir, lat_config_names, dataset_dict, args.seed, batch_info, device
     )
 
     ### export ###

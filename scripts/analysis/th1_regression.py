@@ -20,7 +20,7 @@ import utils
 
 
 def regression(
-    checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, device
+    checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, rng, batch_info, device
 ):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
@@ -32,7 +32,6 @@ def regression(
 
     ### cross validation ###
     kcvs = [1, 2, 3, 5, 6, 8]  # validation segments from splitting data into 10
-    batch_info = 5000
 
     RG_liks_cv_ll = []
     for name in reg_config_names:  # likelihood
@@ -92,9 +91,8 @@ def regression(
 
     ### KS test ###
     KS_kcvs = [2, 5, 8]  # validation segments from splitting data into 10
-    batch_info = 3000
 
-    N = len(pick_neuron)
+    N = len(pick_neurons)
     Qq, Zz, R, Rp = [], [], [], []
     for en, name in enumerate(reg_config_names):
         for kcv in KS_kcvs:
@@ -184,8 +182,8 @@ def regression(
             Zz.append(Z_)
 
             Pearson_s = []
-            for n in range(len(pick_neuron)):
-                for m in range(n + 1, len(pick_neuron)):
+            for n in range(N):
+                for m in range(n + 1, N):
                     r, r_p = scstats.pearsonr(
                         Z_[n], Z_[m]
                     )  # Pearson r correlation test
@@ -198,49 +196,49 @@ def regression(
             Rp.append(r_p)
 
     q_DS, T_DS, T_KS = [], [], []
-    for q in Qq_ll:
+    for q in Qq:
         for qq in q:
             (
-                T_DS,
-                T_KS,
+                T_DS_,
+                T_KS_,
                 sign_DS,
                 sign_KS,
                 p_DS,
                 p_KS,
             ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05, alpha_s=0.05)
-            T_DS.append(T_DS)
-            T_KS.append(T_KS)
+            T_DS.append(T_DS_)
+            T_KS.append(T_KS_)
 
             Z_DS = T_DS / np.sqrt(2 / (qq.shape[0] - 1))
             q_DS.append(utils.stats.Z_to_q(Z_DS))
 
-    Qq = np.array(Qq).reshape(len(CV), len(Ms), -1)
-    Zz = np.array(Zz).reshape(len(CV), len(Ms), -1)
-    R = np.array(R).reshape(len(CV), len(Ms), -1)
-    Rp = np.array(Rp).reshape(len(CV), len(Ms), -1)
+    Qq = np.array(Qq).reshape(len(reg_config_names), len(KS_kcvs), -1)
+    Zz = np.array(Zz).reshape(len(reg_config_names), len(KS_kcvs), -1)
+    R = np.array(R).reshape(len(reg_config_names), len(KS_kcvs), -1)
+    Rp = np.array(Rp).reshape(len(reg_config_names), len(KS_kcvs), -1)
 
-    q_DS = np.array(q_DS).reshape(len(CV), len(Ms), -1)
-    T_DS = np.array(T_DS).reshape(len(CV), len(Ms), -1)
-    T_KS = np.array(T_KS).reshape(len(CV), len(Ms), -1)
+    q_DS = np.array(q_DS).reshape(len(reg_config_names), len(KS_kcvs), -1)
+    T_DS = np.array(T_DS).reshape(len(reg_config_names), len(KS_kcvs), -1)
+    T_KS = np.array(T_KS).reshape(len(reg_config_names), len(KS_kcvs), -1)
 
     regression_dict = {
         "Ell_likelihood": PLL_rg_ll,
         "Ell_subsets": PLL_rg_cov,
-        "quantiles": Qq_ll,
-        "Z_scores": Zz_ll,
-        "correlations": R_ll,
-        "corr_significance": Rp_ll,
-        "q_DS": q_DS_ll,
-        "T_DS": T_DS_ll,
-        "T_KS": T_KS_ll,
-        "KS_significance": sign_KS,
-        "DS_significance": sign_DS,
+        "quantiles": Qq,
+        "Z_scores": Zz,
+        "correlations": R,
+        "significance_corrs": Rp,
+        "q_DS": q_DS,
+        "T_DS": T_DS,
+        "T_KS": T_KS,
+        "significance_KS": sign_KS,
+        "significance_DS": sign_DS,
     }
 
     return regression_dict
 
 
-def binning_variability(checkpoint_dir, config_names, binnings, dataset_dict, device):
+def binning_variability(checkpoint_dir, config_names, binnings, dataset_dict, batch_info, device):
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
 
@@ -323,8 +321,6 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     bottom_y, top_y = y_t.min(), y_t.max()
 
     ### load model ###
-    batch_info = 500
-
     full_model, training_loss, fit_dict, val_dict = models.load_model(
         config_name,
         checkpoint_dir,
@@ -348,7 +344,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
         [0],
         rcov,
         batch_size,
-        pick_neuron,
+        pick_neurons,
         MC=MC,
         skip=skip,
     )
@@ -385,7 +381,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     w_edge = (-rcov[1].min() + rcov[1].max()) / 2.0
     covariates_w = np.linspace(-w_edge, w_edge, steps)
     P_tot = model_utils.marginalized_P(
-        full_model, [covariates_w], [1], rcov, batch_size, pick_neuron, MC=MC, skip=skip
+        full_model, [covariates_w], [1], rcov, batch_size, pick_neurons, MC=MC, skip=skip
     )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
@@ -408,7 +404,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
         [2],
         rcov,
         batch_size,
-        pick_neuron,
+        pick_neurons,
         MC=MC,
         skip=skip,
     )
@@ -433,7 +429,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
         [5],
         rcov,
         batch_size,
-        pick_neuron,
+        pick_neurons,
         MC=MC,
         skip=skip,
     )
@@ -463,7 +459,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     ]
 
     P_tot = model_utils.marginalized_P(
-        full_model, cov_list, [3, 4], rcov, 10000, pick_neuron, MC=MC, skip=skip
+        full_model, cov_list, [3, 4], rcov, 10000, pick_neurons, MC=MC, skip=skip
     )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
@@ -522,7 +518,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     ]
 
     P_mean = (
-        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+        model_utils.compute_P(full_model, covariates, pick_neurons, MC=MC).mean(0).cpu()
     )
     field_hd_omega = (
         (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
@@ -546,7 +542,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     ]
 
     P_mean = (
-        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+        model_utils.compute_P(full_model, covariates, pick_neurons, MC=MC).mean(0).cpu()
     )
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
@@ -584,7 +580,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     P_mean = (
         nprb.utils.model.compute_UCM_P_count(
-            full_model.mapping, full_model.likelihood, covariates, pick_neuron, MC=MC_
+            full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=MC_
         )
         .mean(0)
         .cpu()
@@ -610,7 +606,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     ]
 
     P_mean = (
-        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC_).mean(0).cpu()
+        model_utils.compute_P(full_model, covariates, pick_neurons, MC=MC_).mean(0).cpu()
     )
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
@@ -632,7 +628,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     drift = []
     res_var_drift = []
-    for k in range(len(pick_neuron)):
+    for k in range(len(pick_neurons)):
         _, a, shift, losses = nprb.utils.stats.circ_lin_regression(
             pref_hd_time[k, :],
             t_arr / (2 * np.pi) / 1e2,
@@ -702,7 +698,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     steps = 100
     w_edge = (-rcov[1].min() + rcov[1].max()) / 2.0
     eval_omega = np.linspace(-w_edge, w_edge, steps)
-    for en, n in enumerate(pick_neuron):
+    for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
             eval_omega,
@@ -742,7 +738,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     steps = 100
     eval_speed = np.linspace(0, 30.0, steps)
-    for en, n in enumerate(pick_neuron):
+    for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
             0.0 * np.ones(steps),
@@ -782,7 +778,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     steps = 100
     eval_time = np.linspace(0, TT, steps)
-    for en, n in enumerate(pick_neuron):
+    for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
             0.0 * np.ones(steps),
@@ -828,7 +824,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     avg_pos = []
     FF_pos = []
-    for en, n in enumerate(pick_neuron):
+    for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
             0.0 * np.ones(steps),
@@ -889,10 +885,13 @@ def main():
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
+    parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
+    parser.add_argument("--batch_size", default=5000, type=int)
+    
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
@@ -911,6 +910,9 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+        
+    rng = np.random.default_rng(args.seed)
+    batch_info = args.batch_size
 
     ### names ###
     subset_config_names = [
@@ -947,12 +949,12 @@ def main():
 
     ### analysis ###
     regression_dict = regression(
-        checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, device
+        checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, rng, batch_info, device
     )
     binning_dict = binning_variability(
-        checkpoint_dir, binning_config_names, binnings, dataset_dict, device
+        checkpoint_dir, binning_config_names, binnings, dataset_dict, batch_info, device
     )
-    tunings_dict = tunings(checkpoint_dir, tuning_model_name, dataset_dict, device)
+    tunings_dict = tunings(checkpoint_dir, tuning_model_name, dataset_dict, batch_info, device)
 
     ### export ###
     data_run = {

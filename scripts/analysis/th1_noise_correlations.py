@@ -15,7 +15,7 @@ sys.path.append("../scripts")  # access to scripts
 import models
 
 
-def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
+def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -23,10 +23,8 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
 
     ### statistics over the behaviour ###
     avg_models, var_models, FF_models = [], [], []
-
-    batch_info = 5000  # batching data to evaluate over all data
+    
     kcv = 2
-
     bn = 40
 
     for name in config_names:
@@ -99,7 +97,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, device):
     return variability_dict
 
 
-def noise_correlations(checkpoint_dir, config_names, dataset_dict, device):
+def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -109,7 +107,6 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, device):
 
     ### ELBO for models of different dimensions ###
     kcvs = [2, 5, 8]  # cross validation folds
-    batch_info = 3000  # batching data to evaluate over all data
 
     ELBO = []
     for name in config_names:
@@ -156,7 +153,6 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, device):
         n_group + 25,
         np.arange(3) + 30,
     ]
-    batch_info = 5000  # batching data to evaluate over all data
 
     kcvs = [1, 2, 3, 5, 6, 8]  # validation segments from splitting data into 10
     Ms = modes[:5]
@@ -223,10 +219,9 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, device):
     return noisecorr_dict
 
 
-def best_model(checkpoint_dir, model_name, dataset_dict, device):
+def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     # load model
     config_name = model_name
-    batch_info = 5000
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
         config_name,
@@ -626,6 +621,8 @@ def main():
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
+    parser.add_argument("--batch_size", default=5000, type=int)
+    
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)

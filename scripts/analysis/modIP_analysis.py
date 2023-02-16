@@ -19,9 +19,10 @@ import models
 import utils
 
 
-def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
+def latent_observed(checkpoint_dir, config_names, dataset_dict, gt_modIP, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
+    gt_hd = dataset_dict["covariates"]["hd"]
     gt_a = dataset_dict["covariates"]["a"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -34,7 +35,6 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
     val_neuron = [n_group, n_group + 10, n_group + 20, n_group + 30, n_group + 40]
 
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
-    batch_info = 5000
 
     cv_Ell = []
     for en, name in enumerate(config_names):
@@ -66,7 +66,7 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
                             f_neuron,
                             v_neuron,
                             beta=0.0,
-                            max_iters=3000,
+                            max_iters=3,
                         )
 
                         if ll < prev_ll:
@@ -92,7 +92,6 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
 
     ### compute tuning curves and latent trajectories for XZ joint regression-latent model ###
     config_name = config_names[-1] + "-1"
-    batch_info = 1000
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
         config_name,
@@ -138,10 +137,9 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
     covariates_a = sign * scale * covariates_a + shift
 
     # true tuning
-    modIP = np.load(data_path + data_type + ".npz")
-    hd = modIP["covariates"][:, 0]
+    hd = gt_modIP["covariates"][:, 0]
 
-    gt_mean = modIP["gt_rate"] * tbin
+    gt_mean = gt_modIP["gt_rate"] * tbin
     gt_FF = np.ones_like(gt_mean)
 
     latent_observed_dict = {
@@ -151,6 +149,7 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
         "covariates_a": covariates_a,
         "avg_percentiles": avg_percentiles,
         "FF_percentiles": FF_percentiles,
+        "gt_hd": gt_hd, 
         "gt_a": gt_a,
         "gt_mean": gt_mean,
         "gt_FF": gt_FF,
@@ -159,7 +158,7 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
     return latent_observed_dict
 
 
-def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
+def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -168,7 +167,6 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
 
     # KS framework
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
-    batch_info = 5000
 
     Qq, Zz, R, Rp, Fisher_z, Fisher_q = [], [], [], [], [], []
     for name in config_names:
@@ -286,7 +284,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
         "q_DS": q_DS,
         "T_DS": T_DS,
         "T_KS": T_KS,
-        "DS_significance": sign_DS,
+        "significance_DS": sign_DS,
         "Fisher_Z": Fisher_z,
         "Fisher_q": Fisher_q,
         "quantiles": Qq,
@@ -317,12 +315,15 @@ def main():
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
+    parser.add_argument("--batch_size", default=5000, type=int)
+    
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
 
     args = parser.parse_args()
-
+    batch_info = args.batch_size
+    
     ### setup ###
     save_dir = args.savedir
     data_path = args.datadir
@@ -350,13 +351,14 @@ def main():
     ### load dataset ###
     bin_size = 1
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
+    gt_modIP = np.load(data_path + data_type + ".npz")
 
     ### analysis ###
     latent_observed_dict = latent_observed(
-        checkpoint_dir, nc_config_names, dataset_dict, args.seed, device
+        checkpoint_dir, nc_config_names, dataset_dict, gt_modIP, args.seed, batch_info, device
     )
     variability_dict = variability_stats(
-        checkpoint_dir, nc_config_names, dataset_dict, rng, device
+        checkpoint_dir, nc_config_names, dataset_dict, rng, batch_info, device
     )
 
     ### export ###

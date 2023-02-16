@@ -14,7 +14,7 @@ sys.path.append("..")  # access to scripts
 import models
 
 
-def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
+def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
     max_count = dataset_dict["max_count"]
@@ -24,7 +24,6 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
 
     ### likelihood CV over subgroups of neurons as well as validation runs ###
     seeds = [seed, seed + 1]
-    batch_info = 5000
 
     n_group = np.arange(5)
     val_neuron = [
@@ -220,6 +219,8 @@ def main():
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
+    parser.add_argument("--batch_size", default=5000, type=int)
+    
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
     parser.set_defaults(cpu=False)
@@ -254,7 +255,7 @@ def main():
 
     ### analysis ###
     latent_dict = latent_variable(
-        checkpoint_dir, lat_config_names, dataset_dict, args.seed, device
+        checkpoint_dir, lat_config_names, dataset_dict, args.seed, batch_info, device
     )
 
     ### export ###
