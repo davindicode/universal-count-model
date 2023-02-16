@@ -323,9 +323,6 @@ class peyrache_th1(_dataset):
         hd_nan = (hd_beh == -1.0)
         invalids = self.true_subarrays(hd_nan)
         hd_beh = self.stitch_nans(hd_beh, invalids, angular=True)
-        #hdbeh_invalids = invalids
-        #omega_beh = (hd_beh[1:] - hd_beh[:-1]) / behav_tbin
-        #print(np.where(np.abs(omega_beh) > 20.))
 
         xy_nan = (x_beh != x_beh)
         invalids = self.true_subarrays(xy_nan)
@@ -360,10 +357,7 @@ class peyrache_th1(_dataset):
             "x": x_t,
             "y": y_t,
             "hd": hd_t,
-            "invalid_behaviour": invalid_behaviour,
-            #"omega": omega_beh, 
-            #"hd_beh": hd_beh,
-            #"hdbeh_invalids": hdbeh_invalids,
+            "invalid_behaviour": invalid_behaviour, 
         }
 
         ### export ###

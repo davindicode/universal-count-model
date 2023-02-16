@@ -20,7 +20,7 @@ python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../
 # regression with different likelihoods
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 40 --likelihood IP-exp --mapping svgp-64 --x_mode hd-omega-speed-x-y-time --lr 1e-2 --jitter 1e-5 --gpu 0
 
-python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 40 --likelihood hNB-exp --mapping svgp-64 --x_mode hd-omega-speed-x-y-time --lr 1e-2 --jitter 1e-5 --gpu 0
+python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 40 --likelihood hNB-exp --mapping svgp-64 --x_mode hd-omega-speed-x-y-time --lr 1e-2 --jitter 1e-4 --loss_margin " -1e2" --gpu 0  # needs extra numerical stabilization and earlier stopping criterion
 
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 40 --likelihood U-el-3 --mapping svgp-64 --x_mode hd-omega-speed-x-y-time --lr 1e-2 --jitter 1e-5 --gpu 0
 
@@ -55,7 +55,7 @@ python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../
 # latent variable models
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 100 --likelihood IP-exp --mapping svgp-8 --z_mode T1 --lr 3e-2 --lr_2 5e-3 --jitter 1e-5 --gpu 0
 
-python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 100 --likelihood hNB-exp --mapping svgp-8 --z_mode T1 --lr 3e-2 --lr_2 5e-3 --jitter 1e-5 --gpu 0
+python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 100 --likelihood hNB-exp --mapping svgp-8 --z_mode T1 --lr 3e-2 --lr_2 5e-3 --jitter 1e-4 --gpu 0
 
 python3 models.py --data_type th1 --checkpoint_dir ./checkpoint/ --data_path ../data/ --cv_folds 10 --cv -1 1 2 3 5 6 8 --seeds 123 1234 12345 --batch_size 10000 --max_epochs 3000 --bin_size 100 --likelihood U-el-3 --mapping svgp-8 --z_mode T1 --lr 3e-2 --lr_2 5e-3 --jitter 1e-5 --gpu 0
 

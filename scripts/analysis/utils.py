@@ -6,6 +6,8 @@ import torch
 import torch.optim as optim
 from torch.nn.parameter import Parameter
 
+from tqdm.autonotebook import tqdm
+
 sys.path.append("../..")
 import neuroprob as nprb
 from neuroprob import utils
@@ -18,11 +20,11 @@ def marginalized_UCM_P_count(
     """
     Marginalize over the behaviour p(X) for X not evaluated over.
 
-    :param list eval_points: list of ndarrays of values that you want to compute the marginal SCD at
-    :param list eval_dims: the dimensions that are not marginalized evaluated at eval_points
-    :param list rcov: list of covariate time series
+    :param List eval_points: list of ndarrays of values that you want to compute the marginal SCD at
+    :param List eval_dims: the dimensions that are not marginalized evaluated at eval_points
+    :param List rcov: list of covariate time series
     :param int bs: batch size
-    :param list use_neuron: list of neurons used
+    :param List use_neuron: list of neurons used
     :param int skip: only take every skip time points of the behaviour time series for marginalisation
     """
     rcov = [rc[::skip] for rc in rcov]  # set dilution
@@ -105,13 +107,13 @@ def signed_scaled_shift(
     Shift trajectories to be as close as possible to each other, including
     switches in sign.
 
-    :param np.array theta: circular input array of shape (timesteps,)
-    :param np.array theta_ref: reference circular input array of shape (timesteps,)
+    :param np.ndarray theta: circular input array of shape (timesteps,)
+    :param np.ndarray theta_ref: reference circular input array of shape (timesteps,)
     :param string dev:
     :param int iters:
     :param float lr:
     :returns:
-    :rtype: tuple
+        aligned trajectory (np.ndarray), shift, sign, scale, losses (List)
     """
     XX = torch.tensor(x, device=dev)
     XR = torch.tensor(x_ref, device=dev)
@@ -129,15 +131,18 @@ def signed_scaled_shift(
 
         optimizer = optim.Adam(p, lr=lr)
         losses = []
-        for k in range(iters):
+        
+        iterator = tqdm(range(iters))
+        for k in iterator:
             optimizer.zero_grad()
             X_ = XX * sign * scale + shift
             loss = (metric(X_, XR, topology) ** 2).mean()
             loss.backward()
             optimizer.step()
-            losses.append(loss.cpu().item())
-
-        l_ = loss.cpu().item()
+            
+            l_ = loss.cpu().item()
+            losses.append(l_)
+            iterator.set_postfix(loss=l_)
 
         if l_ < lowest_loss:
             lowest_loss = l_
@@ -146,4 +151,44 @@ def signed_scaled_shift(
             sign_ = sign
             losses_ = losses
 
-    return x * sign_ * scale_ + shift_, shift_, sign_, scale_, losses_
+    aligned = x * sign_ * scale_ + shift_
+    return aligned, shift_, sign_, scale_, losses_
+
+
+
+def circ_drift_regression(
+    x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_fac=1
+):
+    t = torch.tensor(t, device=dev)
+    X = torch.tensor(x, device=dev)
+    Z = torch.tensor(z, device=dev)
+
+    lowest_loss = np.inf
+    for sign in [1, -1]:  # select sign automatically
+        shift = Parameter(torch.zeros(1, device=dev))
+        a = Parameter(torch.zeros(1, device=dev))
+
+        optimizer = optim.Adam([a, shift], lr=lr)
+        losses = []
+        
+        iterator = tqdm(range(iters))
+        for k in iterator:
+            optimizer.zero_grad()
+            Z_ = t * a_fac * a + shift + sign * Z
+            loss = (utils.latent.metric(Z_, X, topology) ** 2).mean()
+            loss.backward()
+            optimizer.step()
+            
+            l_ = loss.cpu().item()
+            losses.append(l_)
+            iterator.set_postfix(loss=l_)
+
+        if l_ < lowest_loss:
+            lowest_loss = l_
+            a_ = a.cpu().item()
+            shift_ = shift.cpu().item()
+            sign_ = sign
+            losses_ = losses
+
+    aligned = a_fac * a_, sign_
+    return aligned, shift_, losses_

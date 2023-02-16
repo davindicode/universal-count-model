@@ -18,7 +18,7 @@ import utils
 
 
 def regression(
-    checkpoint_dir, config_names, data_path, data_type, dataset_dict, device
+    checkpoint_dir, config_names, dataset_dict, device
 ):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
@@ -92,21 +92,21 @@ def regression(
 
     # count distributions
     ref_prob = []
-    hd = [20, 50, 80]
-    for hd_ in hd:
+    eval_hd_inds = [20, 50, 80]
+    for hd_ind in eval_hd_inds:
         for n in range(len(pick_neurons)):
             ref_prob.append(
                 [
                     nprb.utils.stats.cmp_count_prob(
-                        xc, gt_lamb[n, hd_], gt_nu[n, hd_], tbin
+                        xc, gt_lamb[n, hd_ind], gt_nu[n, hd_ind], tbin
                     )
                     for xc in x_counts.numpy()
                 ]
             )
-    ref_prob = np.array(ref_prob).reshape(len(hd), len(pick_neurons), -1)
+    ref_prob = np.array(ref_prob).reshape(len(eval_hd_inds), len(pick_neurons), -1)
 
     cs = nprb.utils.stats.percentiles_from_samples(
-        P_mc[..., hd, :], percentiles=[0.05, 0.5, 0.95], smooth_length=1
+        P_mc[..., eval_hd_inds, :], percentiles=[0.05, 0.5, 0.95], smooth_length=1
     )
     cnt_percentiles = [cs_.cpu().numpy() for cs_ in cs]
 
@@ -127,11 +127,12 @@ def regression(
 
     regression_dict = {
         "RG_cv_ll": RG_cv_ll,
-        "hd": hd,
-        "P_rg": P_rg,
+        "covariates_hd": hd,
+        "eval_hd_inds": eval_hd_inds, 
+        "UCM_P_count": P_rg,
         "gt_mean": gt_mean,
         "gt_FF": gt_FF,
-        "ref_prob": ref_prob,
+        "gt_P_count": ref_prob,
         "cnt_percentiles": cnt_percentiles,
         "avg_percentiles": avg_percentiles,
         "FF_percentiles": FF_percentiles,
@@ -258,52 +259,6 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
     
-    ### aligning trajectory and computing RMS for different models ###
-    splits = 90  # split trajectory into 90 parts
-    kcvs = [15, 30, 45, 60, 75]
-
-    batch_info = 5000
-
-    RMS_cv = []
-    for name in config_names:
-        config_name = name + "-1"
-
-        full_model, _, _, _ = models.load_model(
-            config_name,
-            checkpoint_dir,
-            dataset_dict,
-            batch_info,
-            device,
-        )
-
-        X_loc, _ = full_model.input_group.input_0.variational.eval_moments(
-            0, ts)
-        latents = X_loc.data.cpu().numpy()[:, 0]
-
-        for kcv in kcvs:
-            eval_range = np.arange(ts // splits) + kcv * ts // splits
-
-            _, shift, sign, _, _ = utils.signed_scaled_shift(
-                latents[eval_range],
-                gt_hd[eval_range],
-                topology="ring",
-                dev=device,
-                learn_scale=False,
-                iters=1000, 
-            )
-
-            mask = np.ones((ts,), dtype=bool)
-            mask[eval_range] = False
-
-            lat_t = torch.tensor((sign * latents + shift) % (2 * np.pi))
-            D = (
-                utils.metric(torch.tensor(gt_hd)[mask], lat_t[mask], topology="ring")
-                ** 2
-            )
-            RMS_cv.append(np.sqrt(D.mean().item()))
-
-    RMS_cv = np.array(RMS_cv).reshape(len(config_names), len(kcvs))
-
     ### neuron subgroup likelihood CV for latent models ###
     seeds = [seed, seed+1]
 
@@ -353,6 +308,54 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     LVM_cv_ll = np.array(LVM_cv_ll).reshape(
         len(config_names), len(kcvs), len(val_neuron)
     )
+    
+    ### aligning trajectory and computing RMS for different models ###
+    splits = 90  # split trajectory into 90 parts
+    kcvs = [15, 30, 45, 60, 75]
+
+    batch_info = 5000
+
+    RMS_cv = []
+    for name in config_names:
+        config_name = name + "-1"
+
+        full_model, _, _, _ = models.load_model(
+            config_name,
+            checkpoint_dir,
+            dataset_dict,
+            batch_info,
+            device,
+        )
+
+        X_loc, _ = full_model.input_group.input_0.variational.eval_moments(
+            0, ts)
+        latents = X_loc.data.cpu().numpy()[:, 0]
+
+        for kcv in kcvs:
+            fit_range = np.arange(ts // splits) + kcv * ts // splits
+
+            _, shift, sign, _, _ = utils.signed_scaled_shift(
+                latents[fit_range],
+                gt_hd[fit_range],
+                topology="ring",
+                dev=device,
+                learn_scale=False,
+                iters=1000, 
+            )
+
+            mask = np.ones((ts,), dtype=bool)
+            mask[fit_range] = False
+
+            lat_t = torch.tensor((sign * latents + shift) % (2 * np.pi))
+            D = (
+                utils.metric(torch.tensor(gt_hd)[mask], lat_t[mask], topology="ring")
+                ** 2
+            )
+            RMS_cv.append(np.sqrt(D.mean().item()))
+
+    RMS_cv = np.array(RMS_cv).reshape(len(config_names), len(kcvs))
+
+    
 
     ### compute tuning curves and latent trajectory of UCMs ###
     x_counts = torch.arange(max_count + 1)
@@ -377,8 +380,8 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
         # predict latents
         X_loc, X_std = full_model.input_group.input_0.variational.eval_moments(
             0, ts)
-        X_std = X_std.data.cpu().numpy()[:, 0]
         X_loc = X_loc.data.cpu().numpy()[:, 0]
+        X_std = X_std.data.cpu().numpy()[:, 0]
 
         lat_t, shift, sign, _, _ = utils.signed_scaled_shift(
             X_loc, gt_hd, device, learn_scale=False, iters=1000
@@ -416,8 +419,8 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
         "covariates_aligned": covariates_aligned,
         "latent_mu": latent_mu,
         "latent_std": latent_std,
-        "comp_avg": comp_avg,
-        "comp_FF": comp_FF,
+        "avg_percentiles": comp_avg,
+        "FF_percentiles": comp_FF,
     }
 
     return latent_dict
@@ -451,9 +454,9 @@ def main():
     checkpoint_dir = args.checkpointdir
 
     if args.cpu:
-        dev = "cpu"
+        device = "cpu"
     else:
-        dev = nprb.inference.get_device(gpu=args.gpu)
+        device = nprb.inference.get_device(gpu=args.gpu)
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -483,13 +486,13 @@ def main():
 
     ### analysis ###
     regression_dict = regression(
-        checkpoint_dir, reg_config_names, data_path, data_type, dataset_dict, dev
+        checkpoint_dir, reg_config_names, dataset_dict, device
     )
     variability_dict = variability_stats(
-        checkpoint_dir, reg_config_names, dataset_dict, rng, dev
+        checkpoint_dir, reg_config_names, dataset_dict, rng, device
     )
     latent_dict = latent_variable(
-        checkpoint_dir, lat_config_names, dataset_dict, args.seed, dev)
+        checkpoint_dir, lat_config_names, dataset_dict, args.seed, device)
 
     ### export ###
     data_run = {

@@ -604,7 +604,7 @@ class hNegative_binomial(Negative_binomial):
         super().__init__(tbin, neurons, inv_link, None, tensor_type, strict_likelihood)
         self.dispersion_mapping = dispersion_mapping
         self.dispersion_mapping_f = lambda x: torch.clamp(
-            torch.nn.functional.softplus(x), max=1e3  # softplus more suited than exp
+            torch.exp(x), max=1e3
         )  # avoid r too small (r_inv too big) for numerical stability
 
     def constrain(self):
@@ -693,7 +693,7 @@ class COM_Poisson(_count_model):
         if disper_param is None:
             nu = torch.exp(self.log_nu).expand(1, self.neurons)[:, neuron, None]
         else:
-            nu = torch.exp(disper_param)  # nn.functional.softplus
+            nu = torch.exp(disper_param)
 
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         log_lambda = safe_log(rates * self.tbin + 1e-12)

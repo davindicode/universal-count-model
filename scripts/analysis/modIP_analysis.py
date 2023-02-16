@@ -20,7 +20,7 @@ import utils
 
 
 def latent_observed(
-    checkpoint_dir, config_names, data_path, data_type, dataset_dict, seed, device
+    checkpoint_dir, config_names, dataset_dict, seed, device
 ):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
@@ -94,7 +94,7 @@ def latent_observed(
 
     ### compute tuning curves and latent trajectories for XZ joint regression-latent model ###
     config_name = config_names[-1] + '-1'
-    batch_info = 500
+    batch_info = 1000
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
         config_name,
@@ -146,8 +146,8 @@ def latent_observed(
     modIP = np.load(data_path + data_type + ".npz")
     hd = modIP["covariates"][:, 0]
 
-    gt_rate = modIP["gt_rate"] * tbin
-    gt_FF = np.ones_like(gt_rate)
+    gt_mean = modIP["gt_rate"] * tbin
+    gt_FF = np.ones_like(gt_mean)
 
     latent_observed_dict = {
         "cv_Ell": cv_Ell,
@@ -164,7 +164,7 @@ def latent_observed(
     return latent_observed_dict
 
 
-def variability_stats(checkpoint_dir, config_names, data_path, dataset_dict, rng, device):
+def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -175,7 +175,7 @@ def variability_stats(checkpoint_dir, config_names, data_path, dataset_dict, rng
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000
 
-    Qq, Zz, R, Rp, fisher_z, fisher_q = [], [], [], [], [], []
+    Qq, Zz, R, Rp, Fisher_z, Fisher_q = [], [], [], [], [], []
     for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
@@ -242,8 +242,8 @@ def variability_stats(checkpoint_dir, config_names, data_path, dataset_dict, rng
             
             ts = fit_dict["spiketrain"].shape[-1]
             fz = 0.5 * np.log((1 + r) / (1 - r)) * np.sqrt(ts - 3)
-            fisher_z.append(fz)
-            fisher_q.append(nprb.utils.stats.quantile_Z_mapping(fz, inverse=True))
+            Fisher_z.append(fz)
+            Fisher_q.append(nprb.utils.stats.quantile_Z_mapping(fz, inverse=True))
 
     q_DS, T_DS, T_KS = [], [], []
     for q in Qq:
@@ -277,15 +277,15 @@ def variability_stats(checkpoint_dir, config_names, data_path, dataset_dict, rng
         "T_DS": T_DS,
         "T_KS": T_KS,
         "DS_significance": sign_DS,
-        "Fisher_Z": fisher_z,
-        "Fisher_q": fisher_q,
+        "Fisher_Z": Fisher_z,
+        "Fisher_q": Fisher_q,
         "quantiles": Qq,
         "Z_scores": Zz,
         "R": R,
         "Rp": Rp,
-        "R_mat_Xp": R_mat_Xp,
-        "R_mat_X": R_mat_X,
-        "R_mat_XZ": R_mat_XZ,
+        "R_Poisson_X": R_mat_Xp,
+        "R_Universal_X": R_mat_X,
+        "R_Universal_XZ": R_mat_XZ,
     }
 
     return variability_dict
@@ -319,9 +319,9 @@ def main():
     checkpoint_dir = args.checkpointdir
 
     if args.cpu:
-        dev = "cpu"
+        device = "cpu"
     else:
-        dev = nprb.inference.get_device(gpu=args.gpu)
+        device = nprb.inference.get_device(gpu=args.gpu)
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -343,10 +343,10 @@ def main():
 
     ### analysis ###
     latent_observed_dict = latent_observed(
-        checkpoint_dir, nc_config_names, data_path, data_type, dataset_dict, args.seed, dev
+        checkpoint_dir, nc_config_names, dataset_dict, args.seed, device
     )
     variability_dict = variability_stats(
-        checkpoint_dir, nc_config_names, data_path, dataset_dict, rng, dev
+        checkpoint_dir, nc_config_names, dataset_dict, rng, device
     )
 
     ### export ###

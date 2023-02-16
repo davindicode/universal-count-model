@@ -12,7 +12,7 @@ sys.path.append("..")
 from neuroprob import utils
 
 
-def regressors(fig):
+def regressors(fig, RG_dict):
     widths = [1]
     heights = [1]
     spec = fig.add_gridspec(
@@ -61,7 +61,7 @@ def regressors(fig):
     # ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
 
 
-def bin_sizes(fig):
+def bin_sizes(fig, RG_dict):
     BINS = 20
     binnings = [20, 40, 100, 200, 500]
 
@@ -173,7 +173,7 @@ def bin_sizes(fig):
     lgnd.legendHandles[1]._sizes = [50]
 
 
-def ATIs(fig):
+def ATIs(fig, RG_dict):
     # HD - AHV, ATIs
     R_min = 0.999  # minimum correlation from circular-linear correlation
     X = 0.0
@@ -260,7 +260,7 @@ def ATIs(fig):
     ax.spines["left"].set_visible(False)
 
 
-def population_drift(fig):
+def population_drift(fig, RG_dict):
     X = 0.0
     Y = -0.1
     widths = np.ones(len(show_neuron))
@@ -366,7 +366,7 @@ def population_drift(fig):
     )
 
 
-def latent_variables_scores(fig):
+def latent_variables_scores(fig, LVM_dict):
     cvs = RMS_cv.shape[0]
     fact = 10**3
 
@@ -437,7 +437,7 @@ def latent_variables_scores(fig):
     ax.set_ylabel("RMSE", labelpad=5, fontsize=10)
 
 
-def latent_posterior(fig):
+def latent_posterior(fig, LVM_dict):
     fig.text(0.865 + X, 0.47 + Y, "Universal", fontsize=12, ha="center")
     widths = [1, 0.5]
     heights = [1, 1]
@@ -506,7 +506,7 @@ def latent_posterior(fig):
         l.set_linewidth(3)
 
 
-def latent_delay(fig):
+def latent_delay(fig, LVM_dict):
     ax = fig.add_subplot(spec[1, 0])
     shift_times = 0.1 * (np.arange(delay_RMS.shape[0]) - delay_RMS.shape[0] // 2)
     _arr = delay_RMS.mean(-1)
@@ -533,12 +533,16 @@ def latent_delay(fig):
     ax.set_xlabel("head direction", labelpad=0, fontsize=10)
 
 
+    
 def main():
-    if not os.path.exists("./output"):
-        os.makedirs("./output")
+    save_dir = "../output/"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     plt.style.use(["paper.mplstyle"])
 
     # load
+    RG_results = pickle.load(open(save_dir + "th1_RG_results.p", "rb"))
+    LVM_results = pickle.load(open(save_dir + "th1_LVM_results.p", "rb"))
 
     # plot
     fig = plt.figure(figsize=(8, 4))
@@ -552,17 +556,19 @@ def main():
 
     show_neuron = [11, 26]
 
-    regressors(fig)
-    bin_sizes(fig)
+    ### regression ###
+    regressors(fig, RG_results)
+    bin_sizes(fig, RG_results)
 
-    ATIs(fig)
-    population_drift(fig)
+    ATIs(fig, RG_results)
+    population_drift(fig, RG_results)
 
-    latent_variables_scores(fig)
-    latent_posterior(fig)
-    latent_delay(fig)
+    ### latent variable models ###
+    latent_variables_scores(fig, LVM_results)
+    latent_posterior(fig, LVM_results)
+    latent_delay(fig, LVM_results)
 
-    plt.savefig("output/plot_hdc_add.pdf")
+    plt.savefig(save_dir + "plot_hdc_add.pdf")
 
 
 if __name__ == "__main__":

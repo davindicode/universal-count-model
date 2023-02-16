@@ -12,7 +12,11 @@ sys.path.append("..")
 from neuroprob import utils
 
 
-def regression_scores(fig):
+def regression_scores(fig, RG_dict):
+    region_edge = region_edge[
+        0
+    ]  # boundary separating PoS (lower) and ANT (higher or equal)
+    
     # scores
     widths = [2, 1]
     heights = [1, 3, 2, 3, 1]
@@ -166,7 +170,7 @@ def binning_stats(fig):
     fig.text(0.55 + X, 0.71 + Y, "firing rate (Hz)", fontsize=10, ha="center")
 
 
-def regression_stats(fig):
+def regression_stats(fig, RG_dict):
     # histograms
     FF = np.array([ff_models[b].mean(-1) for b in [1]])
     spec = fig.add_gridspec(
@@ -285,7 +289,7 @@ def regression_stats(fig):
     ax.axis("off")
 
 
-def tunings(fig):
+def tunings(fig, RG_dict):
     # lines
     X = 0.0
     Y = 0.0
@@ -805,7 +809,7 @@ def tunings(fig):
     ax.set_aspect(1)
 
 
-def noise_correlation_scores(fig):
+def noise_correlation_scores(fig, NC_dict):
     Ncases = fisher_z.shape[1]
     eps = 0.4
 
@@ -895,7 +899,7 @@ def noise_correlation_scores(fig):
     # ax.set_ylabel(r'Fisher $Z$', labelpad=5, fontsize=10)
 
 
-def noise_correlations_mats(fig):
+def noise_correlations_mats(fig, NC_dict):
     X = -0.035
     Y = -0.05
     widths = [1, 1]
@@ -1028,7 +1032,7 @@ def noise_correlations_mats(fig):
     )
 
 
-def noise_correlations_single_neuron_variability(fig):
+def noise_correlations_single_neuron_variability(fig, NC_dict):
     X = -0.02
     Y = -0.05
     widths = [1, 1]
@@ -1097,7 +1101,11 @@ def noise_correlations_single_neuron_variability(fig):
     fig.text(0.425 + X, -0.6 + Y, r"$D_z=0$", fontsize=10, ha="center")
 
 
-def latent_trajs(fig):
+def latent_trajs(fig, NC_dict):
+    ### data ###
+    
+    ### plot ###
+    
     # trajectories
     X = -0.03
     Y = -0.05
@@ -1206,7 +1214,11 @@ def latent_trajs(fig):
     ax.set_ylabel("TI (FF)", fontsize=10, labelpad=1)
 
 
-def latent_timescales(fig):
+def timescales(fig, RG_dict, NC_dict):
+    ### data ###
+    
+    
+    ### plot ###
     widths = [1]
     heights = [1]
     spec = fig.add_gridspec(
@@ -1253,159 +1265,15 @@ def latent_timescales(fig):
 
 
 def main():
-    if not os.path.exists("./output"):
-        os.makedirs("./output")
+    save_dir = "../output/"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     plt.style.use(["paper.mplstyle"])
 
     # load
-    datarun = pickle.load(open("./saves/P_HDC_rg40.p", "rb"))
-
-    (
-        avg_models,
-        var_models,
-        ff_models,
-        Pearson_ff,
-        ratio,
-        PLL_rg_ll,
-        PLL_rg_cov,
-        Qq_ll,
-        Zz_ll,
-        R_ll,
-        Rp_ll,
-        q_DS_ll,
-        T_DS_ll,
-        T_KS_ll,
-        sign_KS,
-        sign_DS,
-        mhd_mean,
-        mhd_ff,
-        hd_mean_tf,
-        hd_ff_tf,
-        mw_mean,
-        mw_ff,
-        w_mean_tf,
-        w_ff_tf,
-        ms_mean,
-        ms_ff,
-        s_mean_tf,
-        s_ff_tf,
-        mt_mean,
-        mt_ff,
-        t_mean_tf,
-        t_ff_tf,
-        mpos_mean,
-        mpos_ff,
-        pos_mean_tf,
-        pos_ff_tf,
-        covariates_hd,
-        lower_hd,
-        mean_hd,
-        upper_hd,
-        fflower_hd,
-        ffmean_hd,
-        ffupper_hd,
-        covariates_s,
-        lower_s,
-        mean_s,
-        upper_s,
-        fflower_s,
-        ffmean_s,
-        ffupper_s,
-        covariates_t,
-        lower_t,
-        mean_t,
-        upper_t,
-        fflower_t,
-        ffmean_t,
-        ffupper_t,
-        covariates_w,
-        lower_w,
-        mean_w,
-        upper_w,
-        fflower_w,
-        ffmean_w,
-        ffupper_w,
-        grid_size_pos,
-        grid_shape_pos,
-        field_pos,
-        ff_pos,
-        grid_size_hdw,
-        grid_shape_hdw,
-        field_hdw,
-        grid_size_hdt,
-        grid_shape_hdt,
-        field_hdt,
-        pref_hdw,
-        ATI,
-        res_var,
-        pref_hdt,
-        drift,
-        res_var_drift,
-        tun_width,
-        amp_t,
-        ampm_t,
-        sim_mat,
-        pick_neuron,
-        max_count,
-        tbin,
-        rcov,
-        region_edge,
-    ) = datarun
-
-    datarun = pickle.load(open("./saves/P_HDC_nc40.p", "rb"))
-
-    (
-        avg_models_z,
-        var_models_z,
-        ff_models_z,
-        Pearson_ffz,
-        ratioz,
-        X_c,
-        X_s,
-        cv_pll,
-        elbo,
-        z_tau,
-        pref_hd,
-        grid_size_zz,
-        grid_shape_zz,
-        field_zz,
-        ff_zz,
-        mz1_mean,
-        mz1_ff,
-        z1_mean_tf,
-        z1_ff_tf,
-        mz2_mean,
-        mz2_ff,
-        z2_mean_tf,
-        z2_ff_tf,
-        q_DS_,
-        T_DS_,
-        T_KS_,
-        Qq,
-        Zz,
-        R,
-        Rp,
-        fisher_z,
-        fisher_q,
-        T_KS_fishq,
-        p_KS_fishq,
-        T_KS_ks,
-        p_KS_ks,
-        R_mat_spt,
-        R_mat_sptp,
-        timescales,
-        acg_rc,
-        acg_z,
-        t_lengths,
-    ) = datarun
-
-    datarun = pickle.load(open("./saves/P_HDC_lat.p", "rb"))
-
-    lat_t, lat_t_std, delay_RMS, RMS_cv, LVM_cv_ll, drifts_lv, rcov_lvm = datarun
-
-    region_edge = region_edge[
-        0
-    ]  # boundary separating PoS (lower) and ANT (higher or equal)
+    RG_results = pickle.load(open(save_dir + "th1_RG_results.p", "rb"))
+    NC_results = pickle.load(open(save_dir + "th1_NC_results.p", "rb"))
+    
 
     # plot
     fig = plt.figure(figsize=(8, 4))
@@ -1435,20 +1303,22 @@ def main():
     show_neuron = [11, 26]  # PoS and ANT respectively
 
     ### regression ###
-    regression_scores(fig)
-    binning_stats(fig)
-    regression_stats(fig)
-    tunings(fig)
+    regression_scores(fig, RG_results)
+    binning_stats(fig, RG_results)
+    regression_stats(fig, RG_results)
+    tunings(fig, RG_results)
 
     ### noise correlations ###
-    noise_correlation_scores(fig)
-    noise_correlations_mats(fig)
-    noise_correlations_single_neuron_variability(fig)
-    latent_trajs(fig)
-    latent_timescales(fig)
+    noise_correlation_scores(fig, NC_results)
+    noise_correlations_mats(fig, NC_results)
+    noise_correlations_single_neuron_variability(fig, NC_results)
+    
+    ### covariates ###
+    latent_trajs(fig, NC_results)
+    timescales(fig, NC_results)
 
-    plt.savefig("output/plot_hdc.pdf")
-
+    plt.savefig(save_dir + "plot_hdc.pdf")
+    
 
 if __name__ == "__main__":
     main()

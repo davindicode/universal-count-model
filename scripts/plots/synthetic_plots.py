@@ -59,6 +59,7 @@ def model_icons(fig):
 def regression_scores(fig, regression_dict, variability_dict):
     ### data ###
     T_KS = variability_dict["T_KS"]
+    significance_KS = variability_dict["significance_KS"]
     RG_cv_ll = regression_dict["RG_cv_ll"]
     
     ### plot ###
@@ -114,7 +115,7 @@ def regression_scores(fig, regression_dict, variability_dict):
     # KS
     ax = fig.add_subplot(spec[1, 0])
     ax.set_xlim(-eps, Ncases + eps)
-    for en, r in enumerate(T_KS_rg.mean(0)):
+    for en, r in enumerate(T_KS.mean(0)):
         ax.scatter(
             en * np.ones(len(r)) + np.random.rand(len(r)) * eps / 2 - eps / 4,
             r,
@@ -124,7 +125,7 @@ def regression_scores(fig, regression_dict, variability_dict):
 
     xl, xu = ax.get_xlim()
     ax.fill_between(
-        np.linspace(xl, xu, 2), 0, np.ones(2) * sign_KS, color="k", alpha=0.2
+        np.linspace(xl, xu, 2), 0, np.ones(2) * significance_KS, color="k", alpha=0.2
     )
     # ax.ticklabel_format(axis='y', style='sci', scilimits=(0,0))
     ax.set_ylabel(r"$T_{KS}$", fontsize=10)
@@ -134,11 +135,12 @@ def regression_scores(fig, regression_dict, variability_dict):
 
 def count_tuning(fig, regression_dict):
     ### data ###
-    ref_prob = regression_dict["ref_prob"]
-    P_rg = regression_dict["P_rg"]
-    max_count = P_rg.shape[-1] - 1
+    gt_P_count = regression_dict["gt_P_count"]
+    UCM_P_count = regression_dict["UCM_P_count"]
+    max_count = UCM_P_count.shape[-1] - 1
+    neurons = ref_gt_P_countprob.shape[1]
     
-    hd = regression_dict["hd"]
+    covariates_hd = regression_dict["covariates_hd"]
     gt_mean = regression_dict["gt_mean"]
     gt_FF = regression_dict["gt_FF"]
     
@@ -147,12 +149,16 @@ def count_tuning(fig, regression_dict):
     FFlower, FFmedian, FFupper = regression_dict["FF_percentiles"]
     
     ### plot ###
+    use_neuron = list(range(neurons))
+    
     cx = np.arange(max_count + 1)
     plot_cnt = 11
 
     delx = 0.1
     fig.text(0.34, 1.05, "Universal (GP)", fontsize=12, ha="center")
-    for en, n in enumerate([6, 16]):
+    
+    sel_neurons = [6, 16]
+    for en, n in enumerate(sel_neurons):
 
         widths = [1]
         heights = [0.8, 1, 0.7, 1, 0.4, 1]
@@ -178,16 +184,12 @@ def count_tuning(fig, regression_dict):
         )
 
         c = ["g", "b", "r"]
-        for enn, hd_n in enumerate(hd):
+        for enn, hd_n in enumerate(eval_hd_inds):
             if enn == 1:
                 continue
 
             l = "truth" if enn == 0 else None
-            ax.plot(cx[:plot_cnt], ref_prob[enn, n, :plot_cnt], "--", c=c[enn], label=l)
-            # for pp in range(plot_cnt):
-            #    XX = np.linspace(cx[pp]-0.5, cx[pp]+0.5, 2)
-            #    YY = np.ones(2)*ref_prob[enn, n, pp]
-            #    ax.plot(XX, YY, '--', c=c[enn], label=l)
+            ax.plot(cx[:plot_cnt], gt_P_count[enn, n, :plot_cnt], "--", c=c[enn], label=l)
 
             for pp in range(plot_cnt):
                 l = "fit" if (enn == 0 and pp == 0) else None
@@ -218,21 +220,21 @@ def count_tuning(fig, regression_dict):
         ax = fig.add_subplot(spec[1, 0])
         im = utils.plots.draw_2d(
             (fig, ax),
-            P_rg[n, :, :plot_cnt],
+            UCM_P_count[n, :, :plot_cnt],
             origin="lower",
             cmap="gray_r",
             vmin=0,
-            vmax=P_rg[n, :, :plot_cnt].max(),
+            vmax=UCM_P_count[n, :, :plot_cnt].max(),
             interp_method="nearest",
         )
 
         # arrows
         if en == 0:
             c = ["g", "b", "r"]
-            for enn, hd_n in enumerate(hd):
-                # ax.plot(cx[:plot_cnt], hd_n*np.ones(plot_cnt), c=c[en])
+            for enn, hd_n in enumerate(eval_hd_inds):
                 if enn == 1:
                     continue
+                    
                 ax.annotate(
                     text="",
                     xy=(
@@ -266,7 +268,7 @@ def count_tuning(fig, regression_dict):
             color=line.get_color(),
             alpha=0.3,
         )
-        ax.plot(hd, gt_mean[n, :], "k--")
+        ax.plot(covariates_hd, gt_mean[n, :], "k--")
         ax.set_ylim(0, 5.0)
         if en == 0:
             ax.set_ylabel("mean", fontsize=10)
@@ -277,16 +279,16 @@ def count_tuning(fig, regression_dict):
         ax.set_xticks([0, 2 * np.pi])
 
         ax = fig.add_subplot(spec[5, 0])
-        (line,) = ax.plot(hd, FFmedian[n, :], color="tab:blue")
+        (line,) = ax.plot(covariates_hd, FFmedian[n, :], color="tab:blue")
         ax.fill_between(
-            hd,
+            covariates_hd,
             FFlower[n, :],
             FFupper[n, :],
             color=line.get_color(),
             alpha=0.3,
         )
         ax.set_ylim(0.4, 1.4)
-        ax.plot(hd, gt_FF[n, :], "k--")
+        ax.plot(covariates_hd, gt_FF[n, :], "k--")
         ax.set_xticks([0, 2 * np.pi])
         if en == 0:
             ax.set_ylabel("FF", fontsize=10, labelpad=0)
@@ -302,7 +304,7 @@ def count_tuning(fig, regression_dict):
 
 def latent_variables(fig, regression_dict, latent_dict):
     ### data ###
-    hd = regression_dict["hd"]
+    covariates_hd = regression_dict["covariates_hd"]
     gt_mean = regression_dict["gt_mean"]
     gt_FF = regression_dict["gt_FF"]
     
@@ -310,8 +312,8 @@ def latent_variables(fig, regression_dict, latent_dict):
     latent_mu = latent_dict["latent_mu"]
     latent_std = latent_dict["latent_std"]
     
-    comp_avg = latent_dict["comp_avg"]
-    comp_FF = latent_dict["comp_FF"]
+    avg_percentiles = latent_dict["avg_percentiles"]
+    FF_percentiles = latent_dict["FF_percentiles"]
     
     ### plot ###
     widths = np.ones(1)
@@ -345,7 +347,7 @@ def latent_variables(fig, regression_dict, latent_dict):
     utils.plots.plot_circ_posterior(
         ax,
         tbin * np.arange(T),
-        hd[T_start : T_start + T] % (2 * np.pi),
+        covariates_hd[T_start : T_start + T] % (2 * np.pi),
         None,
         col="k",
         linewidth=1.0,
@@ -412,7 +414,7 @@ def latent_variables(fig, regression_dict, latent_dict):
 
         ax.set_aspect(1)
         ax.scatter(
-            hd[: latent_mu[l].shape[0]],
+            covariates_hd[: latent_mu[l].shape[0]],
             latent_mu[l],
             marker=".",
             s=1,
@@ -430,12 +432,12 @@ def latent_variables(fig, regression_dict, latent_dict):
             ax.set_ylabel(r"$z$", fontsize=10)
 
         ax = fig.add_subplot(spec[1, l])
-        lower, mean, upper = comp_avg[l]
+        lower, mean, upper = avg_percentiles[l]
         (line,) = ax.plot(covariates[0], mean[n], color=col_[l])
         ax.fill_between(
             covariates_aligned, lower[n], upper[n], color=line.get_color(), alpha=0.3
         )
-        ax.plot(hd, gt_mean[n, :], "k--")
+        ax.plot(covariates_hd, gt_mean[n, :], "k--")
         if l == 0:
             ax.set_ylabel("mean", fontsize=10)
         ax.set_xlim([0, 2 * np.pi])
@@ -446,12 +448,12 @@ def latent_variables(fig, regression_dict, latent_dict):
             ax.set_yticklabels([])
 
         ax = fig.add_subplot(spec[2, l])
-        lower, mean, upper = comp_FF[l]
+        lower, mean, upper = FF_percentiles[l]
         (line,) = ax.plot(covariates_aligned, mean[n, :], color=col_[l])
         ax.fill_between(
             covariates_aligned, lower[n, :], upper[n, :], color=line.get_color(), alpha=0.3
         )
-        ax.plot(hd, gt_FF[n, :], "k--")
+        ax.plot(covariates_hd, gt_FF[n, :], "k--")
         if l == 0:
             ax.set_ylabel("FF", fontsize=10)
         ax.set_xticks([0, 2 * np.pi])
@@ -551,7 +553,15 @@ def LVM_scores(fig, latent_dict):
 
 def noise_correlations(fig, variability_dict):
     ### data ###
+    R = variability_dict["R"]
+    Fisher_Z = variability_dict["Fisher_Z"]
+    Z_scores = variability_dict["Z_scores"]
+    T_DS = variability_dict["T_DS"]
     
+    R_Poisson_X = variability_dict["R_Poisson_X"]
+    R_Universal_X = variability_dict["R_Universal_X"]
+    R_Universal_XZ = variability_dict["R_Universal_XZ"]
+    datas = [R_Poisson_X, R_Universal_X, R_Universal_XZ]
     
     ### plot ###
     names = ["Poisson", "Universal (X)", "Universal (X,Z)"]
@@ -631,13 +641,13 @@ def noise_correlations(fig, variability_dict):
                 top=-1.75 - delY * en,
             )
 
-            n, m = model_utils.ind_to_pair(a, len(use_neuron_ll))
+            n, m = utils.ind_to_pair(a, len(use_neuron_ll))
             m_here = m + n + 1
             L = 4.0
 
             ax = fig.add_subplot(spec[1, 0])
             ax.scatter(
-                Zz[l][n][::J], Zz[l][m_here][::J], marker=".", c="tab:blue", alpha=0.3
+                Z_scores[l][n][::J], Z_scores[l][m_here][::J], marker=".", c="tab:blue", alpha=0.3
             )
             ax.set_aspect(1)
             ax.set_xlim(-L, L)
@@ -648,7 +658,7 @@ def noise_correlations(fig, variability_dict):
                 ax.set_ylabel(r"$\xi_2$", labelpad=-1, fontsize=10)
 
             ax = fig.add_subplot(spec[0, 0])
-            Z = Zz[l][m_here]
+            Z = Z_scores[l][m_here]
             ax.hist(Z, bins=np.linspace(-L, L, 20), density=True, color="tab:blue")
             xx = np.linspace(-L, L, 100)
             yy = scstats.norm.pdf(xx)
@@ -658,7 +668,7 @@ def noise_correlations(fig, variability_dict):
             ax.set_yticks([])
 
             ax = fig.add_subplot(spec[1, 1])
-            Z = Zz[l][n]
+            Z = Z_scores[l][n]
             ax.hist(
                 Z,
                 bins=np.linspace(-L, L, 20),
@@ -686,7 +696,7 @@ def noise_correlations(fig, variability_dict):
                 top=-1.75 - delY * en,
             )
             L = 0.1
-            r = T_DS_[0, l]
+            r = T_DS[0, l]
             ax = fig.add_subplot(spec[0, 0])
             ax.hist(
                 r,
@@ -701,7 +711,7 @@ def noise_correlations(fig, variability_dict):
             else:
                 ax.set_yticks([])
 
-            samples = len(Zz[0][0])  # number of quantiles
+            samples = len(Z_scores[0][0])  # number of quantiles
             std = np.sqrt(2 / (samples - 1))
             xx = np.linspace(-L, L, 100)
             yy = scstats.norm.pdf(xx / std) / std
@@ -716,9 +726,9 @@ def noise_correlations(fig, variability_dict):
     weight_map = utils.plots.make_cmap([blue, white, red], "weight_map")
 
     Xoff = 0.03
-    datas = [R_mat_Xp, R_mat_X, R_mat_XZ]
+    
     g = max(-np.stack(datas).min(), np.stack(datas).max()) * 1.0
-    for en, r in enumerate(fisher_z[:3]):
+    for en, r in enumerate(Fisher_Z[:3]):
         widths = [0.25, 1]
         heights = [1]
         spec = fig.add_gridspec(
@@ -790,8 +800,7 @@ def noise_correlations(fig, variability_dict):
     ax.set_title(r"  $r_{ij}$", fontsize=12)
     utils.plots.add_colorbar(
         (fig, ax), im, ticktitle="", ticks=[-0.1, 0, 0.1], ticklabels=[-0.1, 0, 0.1]
-    )  # ,
-    # cbar_format=':.1f')
+    )
 
     # lines
     Yoff = 0.0
