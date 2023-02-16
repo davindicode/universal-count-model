@@ -1,31 +1,22 @@
 import daft
 import matplotlib.colors as col
-import matplotlib.path
+import matplotlib.path as mpath
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
-import matplotlib.transforms
+import matplotlib.transforms as mtransforms
 
 import numpy as np
 from matplotlib.collections import LineCollection
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+
 
 ### plotting ###
-def cm2inch(*tupl):
-    inch = 2.54
-    if isinstance(tupl[0], tuple):
-        return tuple(i / inch for i in tupl[0])
-    else:
-        return tuple(i / inch for i in tupl)
-
-
 def make_cmap(colors, name):
     """
     Create a custom colormap
 
     :param list colors: colors to be included in the colormap
     :param string name: name the colormap
-    :returns: colormap
-    :rtype:
+    :returns:
+        colormap object
     """
     cc = []
     for c in colors:
@@ -106,54 +97,6 @@ def add_colorbar(
     return cbar
 
 
-def mesh_plot(figax, mesh_tuple, cmap="gray", vmin=None, vmax=None):
-    """
-    Create a mesh plot from a mesh tuple given by compute_mesh.
-
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    :returns: figure and axis
-    :rtype: tuple
-    """
-    fig, ax = figax
-    xx, yy, field = mesh_tuple
-    im = ax.pcolormesh(xx, yy, field, vmin=vmin, vmax=vmax, cmap=cmap)
-    return im
-
-
-def draw_2d(
-    figax,
-    data,
-    vmin=0,
-    vmax=1,
-    cmap="gray",
-    origin="upper",
-    aspect="auto",
-    extent=None,
-    interp_method=None,
-):
-    """
-    Visualize a 2D array using imshow, the first axis of data is the y-axis.
-
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    :returns: figure and axis
-    :rtype: tuple
-    """
-    fig, ax = figax
-    im = ax.imshow(
-        data,
-        cmap=cmap,
-        origin=origin,
-        vmin=vmin,
-        vmax=vmax,
-        aspect=aspect,
-        interpolation=interp_method,
-        extent=extent,
-    )
-    return im
-
-
 def raster_plot(
     figax, spikes, time_bins, bin_time, units, colors=None, marker="|", markersize=2
 ):
@@ -177,127 +120,6 @@ def raster_plot(
     ax.set_xlim(0, time_bins * bin_time)
     ax.set_ylim(0.1, units + 0.9)
     ax.set_yticks(np.arange(1, units + 1))
-
-
-def grid_draw_2d(data, figsize, nrows, ncols, vmin=0, vmax=1, cmap="gray"):
-    """
-    Visualize batched image data on a grid.
-
-    :param np.array data: input data of shape ()
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    :returns: figure and axis
-    :rtype: tuple
-    """
-    fig = plt.figure(figsize=figsize)
-    axes = [
-        fig.add_subplot(nrows, ncols, r * ncols + c + 1)
-        for r in range(0, nrows)
-        for c in range(0, ncols)
-    ]
-
-    chans = data.shape[1]
-    if chans == 1:
-        data = data.squeeze(1)
-    else:
-        data = np.transpose(data, (0, 2, 3, 1))
-    for k, ax in enumerate(axes):
-        ax.set_xticks([])
-        ax.set_yticks([])
-        if chans == 1:
-            ax.imshow(data[k], cmap=cmap, vmin=vmin, vmax=vmax)
-        else:
-            ax.imshow(data[k])
-
-    fig.subplots_adjust(hspace=0.1, wspace=0.1)
-    return fig, axes
-
-
-def render_image(fig):
-    """
-    Render an image from a figure buffer.
-
-    :param list colors: colors to be included in the colormap
-    :param string name: name the colormap
-    :returns: figure and axis
-    :rtype: tuple
-    """
-    fig.canvas.draw()  # draw the canvas, cache the renderer
-    image = np.frombuffer(fig.canvas.tostring_rgb(), dtype="uint8")
-    image = image.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    return image
-
-
-def cmap_arrow(
-    ax,
-    start,
-    end,
-    cmap,
-    n_segments=50,
-    lw=3,
-    head_size=10,
-    head_width=0.8,
-    head_length=0.5,
-):
-    """ """
-
-    # Arrow shaft: LineCollection
-    x = np.linspace(start[0], end[0], n_segments)
-    y = np.linspace(start[1], end[1], n_segments)
-    points = np.array([x, y]).T.reshape(-1, 1, 2)
-    segments = np.concatenate([points[:-1], points[1:]], axis=1)
-    lc = LineCollection(segments, cmap=cmap, linewidth=lw)
-    lc.set_array(np.linspace(0, 1, n_segments))
-    ax.add_collection(lc)
-
-    # Arrow head: Triangle
-    tricoords = [
-        (0, -head_width / 2.0),
-        (head_length, 0),
-        (0, head_width / 2.0),
-        (0, -head_width / 2.0),
-    ]
-    angle = np.arctan2(end[1] - start[1], end[0] - start[0])
-    rot = matplotlib.transforms.Affine2D().rotate(angle)
-    tricoords2 = rot.transform(tricoords)
-    tri = matplotlib.path.Path(tricoords2, closed=True)
-    ax.scatter(
-        end[0], end[1], c=1, s=(2 * head_size) ** 2, marker=tri, cmap=cmap, vmin=0
-    )
-
-
-def plot_dispersion(ax, q_cdf, s_KS, labelx=False, labely=False):
-    r"""
-    KS-plot for visualizing dispersion structure.
-
-    :param string mode: either `count` or `ISI` version of quantiles
-    """
-    bins = np.linspace(0.0, 1.0, 11)
-    q_order = np.append(np.array([0]), np.sort(q_cdf))
-
-    samples = len(q_cdf)
-    bb = np.arange(0, samples + 1) / samples
-    (line,) = ax.plot(bb, bb, "r--")
-    ax.fill_between(
-        bins,
-        bins - s_KS * np.ones_like(bins),
-        bins + s_KS * np.ones_like(bins),
-        color="grey",
-        alpha=0.5,
-    )
-    (line,) = ax.plot(q_order, bb, "b")
-
-    ax.set_xlim(0.0, 1.0)
-    ax.set_ylim(0.0, 1.0)
-
-    decorate_ax(ax)
-
-    if labelx:
-        ax.set_xticks([0, 1])
-    if labely:
-        ax.set_yticks([0, 1])
-
-    return ax
 
 
 def plot_circ_posterior(
