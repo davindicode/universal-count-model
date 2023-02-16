@@ -1149,7 +1149,7 @@ def LVM_Ell(
     eval_cov_samples=1,
     eval_ll_samples=100,
     eval_ll_mode="GH",
-    annealing=lambda x: 1.0, 
+    annealing=lambda x: 1.0,
     cov_samples=16,
     ll_samples=1,
     ll_mode="MC",

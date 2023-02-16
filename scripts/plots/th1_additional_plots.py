@@ -533,7 +533,6 @@ def latent_delay(fig, LVM_dict):
     ax.set_xlabel("head direction", labelpad=0, fontsize=10)
 
 
-    
 def main():
     save_dir = "../output/"
     if not os.path.exists(save_dir):

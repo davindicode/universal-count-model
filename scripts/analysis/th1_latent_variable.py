@@ -1,10 +1,12 @@
 import argparse
-import pickle
 import os
+import pickle
+
+import sys
+
 import numpy as np
 import torch
 
-import sys
 sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
@@ -12,20 +14,18 @@ sys.path.append("..")  # access to scripts
 import models
 
 
-def latent_variable(
-    checkpoint_dir, config_names, dataset_dict, seed, device
-):
+def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
     max_count = dataset_dict["max_count"]
     gt_hd = dataset_dict["covariates"]["hd"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
-    
+
     ### likelihood CV over subgroups of neurons as well as validation runs ###
-    seeds = [seed, seed+1]
+    seeds = [seed, seed + 1]
     batch_info = 5000
-    
+
     n_group = np.arange(5)
     val_neuron = [
         n_group,
@@ -42,7 +42,7 @@ def latent_variable(
     for name in config_names:
         for kcv in kcvs:
             config_name = name + str(kcv)
-            
+
             full_model, _, _, val_dict = models.load_model(
                 config_name,
                 checkpoint_dir,
@@ -56,14 +56,14 @@ def latent_variable(
                 prev_ll = np.inf
                 for sd in seeds:  # pick best fit with different random seeds
                     torch.manual_seed(sd)
-                    
+
                     mask = np.ones((neurons,), dtype=bool)
                     mask[v_neuron] = False
                     f_neuron = np.arange(neurons)[mask]
 
                     ll, _ = models.LVM_Ell(
                         full_model,
-                        val_dict, 
+                        val_dict,
                         f_neuron,
                         v_neuron,
                         beta=0.0,
@@ -75,7 +75,9 @@ def latent_variable(
 
                 LVM_cv_ll.append(prev_ll)
 
-    LVM_cv_ll = np.array(LVM_cv_ll).reshape(len(config_names), len(kcvs), len(val_neuron))
+    LVM_cv_ll = np.array(LVM_cv_ll).reshape(
+        len(config_names), len(kcvs), len(val_neuron)
+    )
 
     ### trajectory regression to align to data and compute drifts ###
     splits = 3  # split trajectory into 3 parts
@@ -94,8 +96,7 @@ def latent_variable(
             device,
         )
 
-        X_loc, _ = full_model.input_group.input_0.variational.eval_moments(
-            0, ts)
+        X_loc, _ = full_model.input_group.input_0.variational.eval_moments(0, ts)
         latents = X_loc.data.cpu().numpy()[:, 0]
 
         for kcv in kcvs:
@@ -112,12 +113,14 @@ def latent_variable(
 
             mask = np.ones((ts,), dtype=bool)
             mask[fit_range] = False
-            
+
             latent_aligned = torch.tensor(
                 (np.arange(ts) * tbin * drift + shift + sign * latents) % (2 * np.pi)
             )
             D = (
-                utils.metric(torch.tensor(gt_hd)[mask], latent_aligned[mask], topology="ring")
+                utils.metric(
+                    torch.tensor(gt_hd)[mask], latent_aligned[mask], topology="ring"
+                )
                 ** 2
             )
             RMS_cv.append(np.sqrt(D.mean().item()))
@@ -129,7 +132,7 @@ def latent_variable(
     # compute delays in latent trajectory w.r.t. data, see which one fits best in RMS
     D = 5
     delays = np.arange(-D, D + 1)
-    
+
     config_name = config_names[2] + "-1"  # UCM
 
     full_model, _, _, _ = models.load_model(
@@ -140,13 +143,12 @@ def latent_variable(
         device,
     )
 
-    X_loc, X_std = full_model.input_group.input_0.variational.eval_moments(
-        0, ts)
+    X_loc, X_std = full_model.input_group.input_0.variational.eval_moments(0, ts)
     X_loc = X_loc.data.cpu().numpy()[:, 0]
     X_std = X_std.data.cpu().numpy()[:, 0]
 
     delay_RMS = []
-    for delay in delays:        
+    for delay in delays:
         cvT = X_loc[0].shape[0] - len(delays) + 1
         tar_t = rhd_t[D + delay : cvT + D + delay]
         lat = X_loc[0][D : cvT + D]
@@ -192,12 +194,12 @@ def latent_variable(
     )
 
     latent_dict = {
-        'LVM_cv_ll': LVM_cv_ll, 
-        'RMS_cv': RMS_cv, 
-        'drifts_lv': drifts_lv, 
-        'delay_RMS': delay_RMS, 
-        'latent_mu': latent_mu, 
-        'latent_std': X_std, 
+        "LVM_cv_ll": LVM_cv_ll,
+        "RMS_cv": RMS_cv,
+        "drifts_lv": drifts_lv,
+        "delay_RMS": delay_RMS,
+        "latent_mu": latent_mu,
+        "latent_std": X_std,
     }
 
     return latent_dict
@@ -252,7 +254,8 @@ def main():
 
     ### analysis ###
     latent_dict = latent_variable(
-        checkpoint_dir, lat_config_names, dataset_dict, args.seed, device)
+        checkpoint_dir, lat_config_names, dataset_dict, args.seed, device
+    )
 
     ### export ###
     data_run = {

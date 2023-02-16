@@ -61,7 +61,7 @@ def regression_scores(fig, regression_dict, variability_dict):
     T_KS = variability_dict["T_KS"]
     significance_KS = variability_dict["significance_KS"]
     RG_cv_ll = regression_dict["RG_cv_ll"]
-    
+
     ### plot ###
     widths = [1]
     heights = np.ones(2)
@@ -139,24 +139,24 @@ def count_tuning(fig, regression_dict):
     UCM_P_count = regression_dict["UCM_P_count"]
     max_count = UCM_P_count.shape[-1] - 1
     neurons = ref_gt_P_countprob.shape[1]
-    
+
     covariates_hd = regression_dict["covariates_hd"]
     gt_mean = regression_dict["gt_mean"]
     gt_FF = regression_dict["gt_FF"]
-    
+
     cntlower, cntmedian, cntupper = regression_dict["cnt_percentiles"]
     avglower, avgmedian, avgupper = regression_dict["avg_percentiles"]
     FFlower, FFmedian, FFupper = regression_dict["FF_percentiles"]
-    
+
     ### plot ###
     use_neuron = list(range(neurons))
-    
+
     cx = np.arange(max_count + 1)
     plot_cnt = 11
 
     delx = 0.1
     fig.text(0.34, 1.05, "Universal (GP)", fontsize=12, ha="center")
-    
+
     sel_neurons = [6, 16]
     for en, n in enumerate(sel_neurons):
 
@@ -189,7 +189,9 @@ def count_tuning(fig, regression_dict):
                 continue
 
             l = "truth" if enn == 0 else None
-            ax.plot(cx[:plot_cnt], gt_P_count[enn, n, :plot_cnt], "--", c=c[enn], label=l)
+            ax.plot(
+                cx[:plot_cnt], gt_P_count[enn, n, :plot_cnt], "--", c=c[enn], label=l
+            )
 
             for pp in range(plot_cnt):
                 l = "fit" if (enn == 0 and pp == 0) else None
@@ -234,7 +236,7 @@ def count_tuning(fig, regression_dict):
             for enn, hd_n in enumerate(eval_hd_inds):
                 if enn == 1:
                     continue
-                    
+
                 ax.annotate(
                     text="",
                     xy=(
@@ -307,14 +309,14 @@ def latent_variables(fig, regression_dict, latent_dict):
     covariates_hd = regression_dict["covariates_hd"]
     gt_mean = regression_dict["gt_mean"]
     gt_FF = regression_dict["gt_FF"]
-    
+
     covariates_aligned = latent_dict["covariates_aligned"]
     latent_mu = latent_dict["latent_mu"]
     latent_std = latent_dict["latent_std"]
-    
+
     avg_percentiles = latent_dict["avg_percentiles"]
     FF_percentiles = latent_dict["FF_percentiles"]
-    
+
     ### plot ###
     widths = np.ones(1)
     heights = np.ones(1)
@@ -451,7 +453,11 @@ def latent_variables(fig, regression_dict, latent_dict):
         lower, mean, upper = FF_percentiles[l]
         (line,) = ax.plot(covariates_aligned, mean[n, :], color=col_[l])
         ax.fill_between(
-            covariates_aligned, lower[n, :], upper[n, :], color=line.get_color(), alpha=0.3
+            covariates_aligned,
+            lower[n, :],
+            upper[n, :],
+            color=line.get_color(),
+            alpha=0.3,
         )
         ax.plot(covariates_hd, gt_FF[n, :], "k--")
         if l == 0:
@@ -480,7 +486,7 @@ def latent_variables(fig, regression_dict, latent_dict):
 def LVM_scores(fig, latent_dict):
     ### data ###
     LVM_cv_ll = latent_dict["LVM_cv_ll"]
-    
+
     ### plot ###
     widths = np.ones(1)
     heights = np.ones(2)
@@ -557,12 +563,12 @@ def noise_correlations(fig, variability_dict):
     Fisher_Z = variability_dict["Fisher_Z"]
     Z_scores = variability_dict["Z_scores"]
     T_DS = variability_dict["T_DS"]
-    
+
     R_Poisson_X = variability_dict["R_Poisson_X"]
     R_Universal_X = variability_dict["R_Universal_X"]
     R_Universal_XZ = variability_dict["R_Universal_XZ"]
     datas = [R_Poisson_X, R_Universal_X, R_Universal_XZ]
-    
+
     ### plot ###
     names = ["Poisson", "Universal (X)", "Universal (X,Z)"]
     delX = 0.22
@@ -647,7 +653,11 @@ def noise_correlations(fig, variability_dict):
 
             ax = fig.add_subplot(spec[1, 0])
             ax.scatter(
-                Z_scores[l][n][::J], Z_scores[l][m_here][::J], marker=".", c="tab:blue", alpha=0.3
+                Z_scores[l][n][::J],
+                Z_scores[l][m_here][::J],
+                marker=".",
+                c="tab:blue",
+                alpha=0.3,
             )
             ax.set_aspect(1)
             ax.set_xlim(-L, L)
@@ -726,7 +736,7 @@ def noise_correlations(fig, variability_dict):
     weight_map = utils.plots.make_cmap([blue, white, red], "weight_map")
 
     Xoff = 0.03
-    
+
     g = max(-np.stack(datas).min(), np.stack(datas).max()) * 1.0
     for en, r in enumerate(Fisher_Z[:3]):
         widths = [0.25, 1]
@@ -832,11 +842,11 @@ def latent_observed_tuning(fig, latent_observed_dict):
     FFlower, FFmedian, FFupper = latent_observed_dict["FF_percentiles"]
     X_c = latent_observed_dict["X_c"]
     X_s = latent_observed_dict["X_s"]
-    
+
     gt_a = latent_observed_dict["gt_a"]
     gt_mean = latent_observed_dict["gt_mean"]
     gt_FF = latent_observed_dict["gt_FF"]
-    
+
     ### XZ tuning ###
     widths = [1]
     heights = [1]

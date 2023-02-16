@@ -19,7 +19,6 @@ import models
 import utils
 
 
-
 def regression(
     checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, device
 ):
@@ -39,7 +38,7 @@ def regression(
     for name in reg_config_names:  # likelihood
         for kcv in kcvs:
             config_name = name + str(kcv)
-            
+
             full_model, _, _, val_dict = models.load_model(
                 config_name,
                 checkpoint_dir,
@@ -47,7 +46,7 @@ def regression(
                 batch_info,
                 device,
             )
-            
+
             RG_liks_cv_ll.append(
                 models.RG_Ell(
                     full_model,
@@ -60,14 +59,13 @@ def regression(
                 )
             )
 
-    RG_liks_cv_ll = np.array(RG_liks_cv_ll).reshape(
-        len(reg_config_names), len(kcvs))
+    RG_liks_cv_ll = np.array(RG_liks_cv_ll).reshape(len(reg_config_names), len(kcvs))
 
     RG_subsets_cv_ll = []
     for name in subset_config_names:  # input space
         for kcv in kcvs:
             config_name = name + str(kcv)
-            
+
             full_model, _, _, val_dict = models.load_model(
                 config_name,
                 checkpoint_dir,
@@ -75,7 +73,7 @@ def regression(
                 batch_info,
                 device,
             )
-            
+
             RG_subsets_cv_ll.append(
                 models.RG_Ell(
                     full_model,
@@ -89,18 +87,19 @@ def regression(
             )
 
     RG_subsets_cv_ll = np.array(RG_subsets_cv_ll).reshape(
-        len(subset_config_names), len(kcvs))
-    
+        len(subset_config_names), len(kcvs)
+    )
+
     ### KS test ###
     KS_kcvs = [2, 5, 8]  # validation segments from splitting data into 10
     batch_info = 3000
-    
+
     N = len(pick_neuron)
     Qq, Zz, R, Rp = [], [], [], []
     for en, name in enumerate(reg_config_names):
         for kcv in KS_kcvs:
             config_name = name + str(kcv)
-            
+
             full_model, _, fit_dict, _ = models.load_model(
                 config_name,
                 checkpoint_dir,
@@ -116,35 +115,59 @@ def regression(
 
                 if type(full_model.likelihood) == nprb.likelihoods.Poisson:
                     rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping, full_model.likelihood.f, covariates, 1000, pick_neurons)
-                    
+                        full_model.mapping,
+                        full_model.likelihood.f,
+                        covariates,
+                        1000,
+                        pick_neurons,
+                    )
+
                     rate = rate.mean(0).cpu().numpy()  # posterior mean
-                    
-                    P.append(nprb.utils.stats.poiss_count_prob(np.arange(max_count+1), rate, tbin))
+
+                    P.append(
+                        nprb.utils.stats.poiss_count_prob(
+                            np.arange(max_count + 1), rate, tbin
+                        )
+                    )
 
                 elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
                     rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping, full_model.likelihood.f, covariates, 1000, pick_neurons)
+                        full_model.mapping,
+                        full_model.likelihood.f,
+                        covariates,
+                        1000,
+                        pick_neurons,
+                    )
                     r_inv = nprb.utils.model.marginal_posterior_samples(
-                        full_model.likelihood.dispersion_mapping, full_model.likelihood.dispersion_mapping_f, 
-                        covariates, 1000, pick_neurons)
-                    
+                        full_model.likelihood.dispersion_mapping,
+                        full_model.likelihood.dispersion_mapping_f,
+                        covariates,
+                        1000,
+                        pick_neurons,
+                    )
+
                     rate = rate.mean(0).cpu().numpy()  # posterior mean
                     r_inv = r_inv.mean(0).cpu().numpy()
 
-                    P.append(nprb.utils.stats.nb_count_prob(np.arange(max_count+1), rate, r_inv, tbin))
+                    P.append(
+                        nprb.utils.stats.nb_count_prob(
+                            np.arange(max_count + 1), rate, r_inv, tbin
+                        )
+                    )
 
                 else:  # UCM
                     P_mc = nprb.utils.model.compute_UCM_P_count(
                         full_model.mapping,
                         full_model.likelihood,
-                        covariates, 
+                        covariates,
                         pick_neurons,
-                        MC=100, 
+                        MC=100,
                     )
                     P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
-                    
-            P = np.concatenate(P, axis=1)  # count probabilities of shape (neurons, timesteps, count)
+
+            P = np.concatenate(
+                P, axis=1
+            )  # count probabilities of shape (neurons, timesteps, count)
 
             q_ = []
             Z_ = []
@@ -153,22 +176,24 @@ def regression(
                     0, pick_neurons[n], :
                 ].numpy()
                 q = nprb.utils.stats.counts_to_quantiles(P[n, ...], spike_binned, rng)
-                
+
                 q_.append(q)
                 Z_.append(nprb.utils.stats.quantile_Z_mapping(q))
-                
+
             Qq.append(q_)
             Zz.append(Z_)
 
             Pearson_s = []
             for n in range(len(pick_neuron)):
                 for m in range(n + 1, len(pick_neuron)):
-                    r, r_p = scstats.pearsonr(Z_[n], Z_[m])  # Pearson r correlation test
+                    r, r_p = scstats.pearsonr(
+                        Z_[n], Z_[m]
+                    )  # Pearson r correlation test
                     Pearson_s.append((r, r_p))
 
             r = np.array([p[0] for p in Pearson_s])
             r_p = np.array([p[1] for p in Pearson_s])
-            
+
             R.append(r)
             Rp.append(r_p)
 
@@ -197,7 +222,6 @@ def regression(
     q_DS = np.array(q_DS).reshape(len(CV), len(Ms), -1)
     T_DS = np.array(T_DS).reshape(len(CV), len(Ms), -1)
     T_KS = np.array(T_KS).reshape(len(CV), len(Ms), -1)
-    
 
     regression_dict = {
         "Ell_likelihood": PLL_rg_ll,
@@ -216,17 +240,14 @@ def regression(
     return regression_dict
 
 
-
-def binning_variability(
-    checkpoint_dir, config_names, binnings, dataset_dict, device
-):
+def binning_variability(checkpoint_dir, config_names, binnings, dataset_dict, device):
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
-    
+
     ### statistics over the behaviour ###
     avg_binnings, var_binnings, FF_binnings = [], [], []
     for name in config_names:
-        config_name = name + '-1'
+        config_name = name + "-1"
 
         full_model, _, fit_dict, _ = models.load_model(
             config_name,
@@ -241,17 +262,22 @@ def binning_variability(
         for batch in range(full_model.input_group.batches):
             covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
-            P_mc = nprb.utils.model.compute_UCM_P_count(
-                full_model.mapping,
-                full_model.likelihood,
-                covariates, 
-                pick_neurons,
-                MC=100, 
-            ).mean(0).cpu().numpy()  # count probabilities of shape (neurons, timesteps, count)
-            
+            P_mc = (
+                nprb.utils.model.compute_UCM_P_count(
+                    full_model.mapping,
+                    full_model.likelihood,
+                    covariates,
+                    pick_neurons,
+                    MC=100,
+                )
+                .mean(0)
+                .cpu()
+                .numpy()
+            )  # count probabilities of shape (neurons, timesteps, count)
+
             max_count = P_mc.shape[-1] - 1
             x_counts = np.arange(max_count + 1)
-            
+
             avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
             var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
             ff = var / (avg + 1e-12)
@@ -265,7 +291,7 @@ def binning_variability(
 
     # compute the Pearson correlation between Fano factors and mean firing rates
     bin_sel = 1  # 40 ms
-    
+
     Pearson_avg_FF = []
     ratio_avg_FF = []
     for avg, ff in zip(avg_binnings[b], FF_binnings[b]):
@@ -274,7 +300,7 @@ def binning_variability(
         ratio_avg_FF.append(ff.std() / avg.std())
 
     binning_dict = {
-        "bin_sizes": binnings, 
+        "bin_sizes": binnings,
         "avg_binnings": avg_binnings,
         "var_binnings": var_binnings,
         "FF_binnings": FF_binnings,
@@ -285,21 +311,17 @@ def binning_variability(
     return binning_dict
 
 
-
-
-def tunings(
-    checkpoint_dir, model_name, dataset_dict, device
-):
+def tunings(checkpoint_dir, model_name, dataset_dict, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
-    
+
     x_t = dataset_dict["covariates"]["x_t"]
     y_t = dataset_dict["covariates"]["y_t"]
     left_x, right_x = x_t.min(), x_t.max()
     bottom_y, top_y = y_t.min(), y_t.max()
-    
+
     ### load model ###
     batch_info = 500
 
@@ -458,38 +480,36 @@ def tunings(
     marg_pos_mean = mpos_mean.reshape(-1, A, B)
     marg_pos_FF = mpos_ff.reshape(-1, A, B)
 
-    
     marginal_tunings = {
-        'hd_avg_tf': hd_avg_tf,
-        'hd_FF_tf': hd_FF_tf,
-        'omega_avg_tf': omega_avg_tf,
-        'omega_FF_tf': omega_FF_tf,
-        'speed_avg_tf': speed_avg_tf,
-        'speed_FF_tf': speed_FF_tf,
-        'pos_avg_tf': pos_avg_tf,
-        'pos_FF_tf': pos_FF_tf,
-        'time_avg_tf': time_avg_tf,
-        'time_FF_tf': time_FF_tf,
-        'marg_hd_avg': mhd_mean,
-        'marg_hd_FF': mhd_ff,
-        'marg_omega_avg': mw_mean,
-        'marg_omega_FF': mw_ff,
-        'marg_speed_avg': ms_mean,
-        'marg_speed_FF': ms_ff,
-        'marg_pos_avg': mpos_mean,
-        'marg_pos_FF': mpos_ff,
-        'marg_time_avg': mt_mean,
-        'marg_time_FF': mt_ff,
+        "hd_avg_tf": hd_avg_tf,
+        "hd_FF_tf": hd_FF_tf,
+        "omega_avg_tf": omega_avg_tf,
+        "omega_FF_tf": omega_FF_tf,
+        "speed_avg_tf": speed_avg_tf,
+        "speed_FF_tf": speed_FF_tf,
+        "pos_avg_tf": pos_avg_tf,
+        "pos_FF_tf": pos_FF_tf,
+        "time_avg_tf": time_avg_tf,
+        "time_FF_tf": time_FF_tf,
+        "marg_hd_avg": mhd_mean,
+        "marg_hd_FF": mhd_ff,
+        "marg_omega_avg": mw_mean,
+        "marg_omega_FF": mw_ff,
+        "marg_speed_avg": ms_mean,
+        "marg_speed_FF": ms_ff,
+        "marg_pos_avg": mpos_mean,
+        "marg_pos_FF": mpos_ff,
+        "marg_time_avg": mt_mean,
+        "marg_time_FF": mt_ff,
     }
-    
-    
+
     # special joint tuning curves
-    
+
     ### hd omega ###
     grid_size_hdw = (51, 41)
     grid_shape_hdw = [[0, 2 * np.pi], [-10.0, 10.0]]
-    grid_hd_omega = {'size': grid_size_hdw, 'shape': grid_shape_hdw}
-    
+    grid_hd_omega = {"size": grid_size_hdw, "shape": grid_shape_hdw}
+
     steps = np.product(grid_size_hdw)
     A, B = grid_size_hdw
     covariates = [
@@ -501,9 +521,12 @@ def tunings(
         0.0 * np.ones(steps),
     ]
 
-    P_mean = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
-    field_hd_omega = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
-
+    P_mean = (
+        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+    )
+    field_hd_omega = (
+        (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
+    )
 
     # compute preferred HD
     grid = (101, 21)
@@ -522,14 +545,14 @@ def tunings(
         0.0 * np.ones(steps),
     ]
 
-    P_mean = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+    P_mean = (
+        model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).mean(0).cpu()
+    )
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
-
 
     Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
     Z = Z[None, :].reshape(-1, A, B)
     pref_hd_omega = np.angle((Z * field).mean(1)) % (2 * np.pi)  # neurons, w
-
 
     # ATI
     ATI = []
@@ -543,12 +566,11 @@ def tunings(
     ATI = np.array(ATI)
     res_var = np.array(res_var)
 
-    
     ### hd time ###
     grid_size_hdt = (51, 41)
     grid_shape_hdt = [[0, 2 * np.pi], [0.0, TT]]
-    grid_hd_time = {'size': grid_size_hdt, 'shape': grid_shape_hdt}
-    
+    grid_hd_time = {"size": grid_size_hdt, "shape": grid_shape_hdt}
+
     steps = np.product(grid_size_hdt)
     A, B = grid_size_hdt
     covariates = [
@@ -562,10 +584,12 @@ def tunings(
 
     P_mean = (
         nprb.utils.model.compute_UCM_P_count(
-            full_model.mapping, full_model.likelihood, covariates, pick_neuron, MC=MC_).mean(0).cpu()
+            full_model.mapping, full_model.likelihood, covariates, pick_neuron, MC=MC_
+        )
+        .mean(0)
+        .cpu()
     )
     field_hd_time = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
-
 
     # drift and similarity matrix
     grid = (201, 16)
@@ -590,7 +614,6 @@ def tunings(
     )
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
-
     Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
     Z = Z[None, :].reshape(-1, A, B)
     E_exp = (Z * field).sum(-2) / field.sum(-2)
@@ -611,32 +634,34 @@ def tunings(
     res_var_drift = []
     for k in range(len(pick_neuron)):
         _, a, shift, losses = nprb.utils.stats.circ_lin_regression(
-            pref_hd_time[k, :], t_arr / (2 * np.pi) / 1e2, dev="cpu", iters=1000, lr=1e-2
+            pref_hd_time[k, :],
+            t_arr / (2 * np.pi) / 1e2,
+            dev="cpu",
+            iters=1000,
+            lr=1e-2,
         )
         drift.append(a / 1e2)
         res_var_drift.append(losses[-1])
     drift = np.array(drift)
     res_var_drift = np.array(res_var_drift)
 
-
     joint_tunings = {
-        'grid_hd_omega': grid_hd_omega,
-        'field_hd_omega': field_hd_omega,
-        'pref_hd_omega': pref_hd_omega,
-        'grid_hd_time': grid_hd_time, 
-        'field_hd_time': field_hd_time,
-        'pref_hd_time': pref_hd_time, 
-        'ATI': ATI,
-        'res_var': res_var,
-        'drift': drift,
-        'res_var_drift': res_var_drift,
-        'tun_width': tun_width,
-        'amp_t': amp_t,
-        'ampm_t': ampm_t,
-        'sim_mat': sim_mat,
+        "grid_hd_omega": grid_hd_omega,
+        "field_hd_omega": field_hd_omega,
+        "pref_hd_omega": pref_hd_omega,
+        "grid_hd_time": grid_hd_time,
+        "field_hd_time": field_hd_time,
+        "pref_hd_time": pref_hd_time,
+        "ATI": ATI,
+        "res_var": res_var,
+        "drift": drift,
+        "res_var_drift": res_var_drift,
+        "tun_width": tun_width,
+        "amp_t": amp_t,
+        "ampm_t": ampm_t,
+        "sim_mat": sim_mat,
     }
-    
-    
+
     # conditional tuning curves
     MC = 300
     MC_ = 100
@@ -796,8 +821,8 @@ def tunings(
     H = grid_shape_pos[1][1] - grid_shape_pos[1][0]
     W = grid_shape_pos[0][1] - grid_shape_pos[0][0]
     grid_size_pos = (int(41 * W / H), 41)
-    grid_pos = {'size': grid_size_pos, 'shape': grid_shape_pos}
-    
+    grid_pos = {"size": grid_size_pos, "shape": grid_shape_pos}
+
     steps = np.product(grid_size_pos)
     A, B = grid_size_pos
 
@@ -825,30 +850,30 @@ def tunings(
 
     avg_pos = np.stack(avg_pos)
     FF_pos = np.stack(FF_pos)
-    
+
     conditional_tunings = {
-        'eval_hd': eval_hd,
-        'avg_hd_percentiles': avg_hd_percentiles,
-        'FF_hd_percentiles': FF_hd_percentiles,
-        'eval_omega': eval_omega,
-        'avg_omega_percentiles': avg_omega_percentiles,
-        'FF_omega_percentiles': FF_omega_percentiles,
-        'eval_speed': eval_speed,
-        'avg_speed_percentiles': avg_speed_percentiles,
-        'FF_speed_percentiles': FF_speed_percentiles,
-        'eval_time': eval_time,
-        'avg_time_percentiles': avg_time_percentiles,
-        'FF_time_percentiles': FF_time_percentiles,
-        'grid_pos': grid_pos,
-        'avg_pos': avg_pos,
-        'FF_pos': FF_pos,
+        "eval_hd": eval_hd,
+        "avg_hd_percentiles": avg_hd_percentiles,
+        "FF_hd_percentiles": FF_hd_percentiles,
+        "eval_omega": eval_omega,
+        "avg_omega_percentiles": avg_omega_percentiles,
+        "FF_omega_percentiles": FF_omega_percentiles,
+        "eval_speed": eval_speed,
+        "avg_speed_percentiles": avg_speed_percentiles,
+        "FF_speed_percentiles": FF_speed_percentiles,
+        "eval_time": eval_time,
+        "avg_time_percentiles": avg_time_percentiles,
+        "FF_time_percentiles": FF_time_percentiles,
+        "grid_pos": grid_pos,
+        "avg_pos": avg_pos,
+        "FF_pos": FF_pos,
     }
-    
+
     # total dictionary
     tunings_dict = {
-        'marginal_tunings': marginal_tunings, 
-        'conditional_tunings': conditional_tunings, 
-        'joint_tunings': joint_tunings, 
+        "marginal_tunings": marginal_tunings,
+        "conditional_tunings": conditional_tunings,
+        "joint_tunings": joint_tunings,
     }
 
     return tunings_dict
@@ -908,8 +933,10 @@ def main():
         "th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_200K48_0d0_10f",
         "th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_500K25_0d0_10f",
     ]
-    
-    tuning_model_name = "th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f-1"
+
+    tuning_model_name = (
+        "th1_U-el-3_svgp-64_X[hd-omega-speed-x-y-time]_Z[]_40K11_0d0_10f-1"
+    )
 
     ### load dataset ###
     data_type = "th1"
@@ -917,18 +944,19 @@ def main():
 
     dataset_dict = models.get_dataset(data_type, bin_size, data_path)
     neuron_regions = dataset_dict["metainfo"]["neuron_regions"]
-    
+
     ### analysis ###
     regression_dict = regression(
-        checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, device)
+        checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, device
+    )
     binning_dict = binning_variability(
-        checkpoint_dir, binning_config_names, binnings, dataset_dict, device)
-    tunings_dict = tunings(
-        checkpoint_dir, tuning_model_name, dataset_dict, device)
+        checkpoint_dir, binning_config_names, binnings, dataset_dict, device
+    )
+    tunings_dict = tunings(checkpoint_dir, tuning_model_name, dataset_dict, device)
 
     ### export ###
     data_run = {
-        "neuron_regions": neuron_regions, 
+        "neuron_regions": neuron_regions,
         "regression": regression_dict,
         "binning_dict": binning_dict,
         "tunings": tunings_dict,

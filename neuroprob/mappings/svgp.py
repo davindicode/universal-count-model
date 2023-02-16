@@ -40,7 +40,7 @@ def p_F_U(
     :param torch.Tensor u_scale_tril: lower triangular cholesky of covariance of variational MVN distribution
     :param bool full_cov: return the posterior covariance matrix or not
     :param bool compute_cov: compute the posterior covariance matrix or not
-    :param bool whiten: whether to apply the whitening transform 
+    :param bool whiten: whether to apply the whitening transform
     :param float jitter: size of small positive diagonal matrix to help stablize Cholesky decompositions
     :return:
         loc and covariance matrix (or variance vector)
@@ -136,7 +136,9 @@ class inducing_points(nn.Module):
     Class to hold inducing points
     """
 
-    def __init__(self, out_dims, inducing_points, MAP=False, tensor_type=torch.float, jitter=1e-6):
+    def __init__(
+        self, out_dims, inducing_points, MAP=False, tensor_type=torch.float, jitter=1e-6
+    ):
         """
         :param int out_dims: number of output dimensions
         :param inducing_points: inducing point locations (out_dims, N_induc, dims)
@@ -144,7 +146,7 @@ class inducing_points(nn.Module):
         super().__init__()
         self.tensor_type = tensor_type
         self.jitter = jitter
-        
+
         self.Xu = Parameter(inducing_points.type(tensor_type))
         _, self.n_ind, self.input_dims = self.Xu.shape
 
@@ -195,9 +197,9 @@ class SVGP(base._input_mapping):
         """
         :param int out_dims: number of output dimensions of the GP, e.g. neurons
         :param nn.Module inducing_points: initial inducing points with shape (out_dims, n_induc, input_dims)
-        :param Kernel kernel: a tuple listing kernels, with content 
+        :param Kernel kernel: a tuple listing kernels, with content
                                      (kernel_type, topology, lengthscale, variance)
-        :param Number/torch.Tensor/nn.Module mean: initial GP mean of shape (samples, out_dims, ts), or if nn.Module 
+        :param Number/torch.Tensor/nn.Module mean: initial GP mean of shape (samples, out_dims, ts), or if nn.Module
                                         learnable function to compute the mean given input
         """
         super().__init__(input_dims, out_dims, tensor_type, active_dims)
@@ -295,7 +297,7 @@ class SVGP(base._input_mapping):
 
     def compute_F(self, XZ):
         """
-        Computes moments of the posterior marginals and updating the cholesky matrix 
+        Computes moments of the posterior marginals and updating the cholesky matrix
         for the covariance over inducing point locations.
 
         :param XZ: input covariates with shape (samples, out_dims, ts, dims)
@@ -320,7 +322,7 @@ class SVGP(base._input_mapping):
     def sample_F(self, XZ, samples=1, eps=None):
         """
         Samples from the predictive distribution (posterior over evaluation points)
-        
+
         :param XZ: evaluation input covariates with shape (samples, out_dims, ts, dims)
         :return:
             joint samples of the posterior (samples, out_dims, ts)

@@ -9,7 +9,6 @@ from ..base import _data_object, _inv_link_functions, _link_functions
 from ..distributions import Rn_Normal
 
 
-
 _ll_modes = ["MC", "GH"]
 
 
@@ -28,9 +27,7 @@ def mc_gen(q_mu, q_var, samples, neuron):
     q_mu = q_mu[:, neuron, :]
     if isinstance(q_var, numbers.Number):  # zero scalar
         h = (
-            q_mu[None, ...]
-            .expand(samples, *q_mu.shape)
-            .reshape(-1, *q_mu.shape[1:])
+            q_mu[None, ...].expand(samples, *q_mu.shape).reshape(-1, *q_mu.shape[1:])
             if samples > 1
             else q_mu
         )
@@ -40,11 +37,10 @@ def mc_gen(q_mu, q_var, samples, neuron):
         if samples == 1:  # no expanding
             h = Rn_Normal(q_mu, q_var.sqrt())()
         else:  # shape is (ll_samplesxcov_samples, neurons, time)
-            h = Rn_Normal(q_mu, q_var.sqrt())((samples,)).view(
-                -1, *q_mu.shape[1:]
-            )
+            h = Rn_Normal(q_mu, q_var.sqrt())((samples,)).view(-1, *q_mu.shape[1:])
 
     return h
+
 
 def gh_gen(q_mu, q_var, points, neuron):
     """

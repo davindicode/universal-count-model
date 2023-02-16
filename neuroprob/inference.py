@@ -222,7 +222,13 @@ class VI_optimized(nn.Module):
 
     ### optimization ###
     def set_optimizers(
-        self, optimizer, scheduler, scheduler_interval, opt_lr_dict, special_grads=[], extra_update_args=None
+        self,
+        optimizer,
+        scheduler,
+        scheduler_interval,
+        opt_lr_dict,
+        special_grads=[],
+        extra_update_args=None,
     ):
         """
         Set the optimizers and the optimization hyperparameters.
@@ -280,11 +286,11 @@ class VI_optimized(nn.Module):
                 d.append(opt_dict)
 
             self.optim_base = optimizer(d, lr=opt_lr_dict["default"])
-        
+
         # scheduler if any
         self.sch = scheduler(self.optim_base) if scheduler is not None else None
         self.sch_st = scheduler_interval
-        
+
         # special gradient treatment
         pd = dict(self.named_parameters())
 

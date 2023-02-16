@@ -77,7 +77,7 @@ class probabilistic_mapping(base._VI_object):
     def __init__(self, input_group, mapping, joint_samples=False):
         """
         The input_group and mapping form an input-output pair for the stochastic map.
-        This component can be used to build the input_group to another mapping, allowing 
+        This component can be used to build the input_group to another mapping, allowing
         one to build hierarchical models as deep Gaussian processes.
         """
         super().__init__(mapping.out_dims, mapping.tensor_type)

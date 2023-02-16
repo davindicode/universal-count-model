@@ -436,7 +436,7 @@ def daft_init_figax(fig, ax, **daft_kwargs):
     Wrapper for initializing PGM via daft
     """
     pgm = daft.PGM(**daft_kwargs)
-    
+
     pgm._ctx._figure = fig
     ax.axis("off")
 

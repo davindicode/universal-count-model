@@ -23,7 +23,7 @@ def percentiles_from_samples(
     num_samples = samples.size(0)
     ts = samples.size(-1)
     prev_shape = samples.shape[1:]
-    
+
     if len(samples.shape) == 2:
         samples = samples[:, None, :]
     else:
@@ -48,14 +48,11 @@ def percentiles_from_samples(
             percentile_samples = [
                 Conv1D(p[:, None, :]).view(prev_shape) for p in percentile_samples
             ]
-            
+
     else:  # reshape
-        percentile_samples = [
-            p.view(prev_shape) for p in percentile_samples
-        ]
+        percentile_samples = [p.view(prev_shape) for p in percentile_samples]
 
     return percentile_samples
-
 
 
 # count distributions
@@ -70,9 +67,7 @@ def poiss_count_prob(counts, rate, sim_time):
     g = (rate * sim_time)[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
 
-    return np.exp(
-        counts * log_g - g - sps.gammaln(counts + 1)
-    )
+    return np.exp(counts * log_g - g - sps.gammaln(counts + 1))
 
 
 def zip_count_prob(counts, rate, alpha, sim_time):
@@ -87,11 +82,9 @@ def zip_count_prob(counts, rate, alpha, sim_time):
     g = (rate * sim_time)[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
     alpha = alpha[..., None]
-    
-    zero_mask = (counts == 0)
-    p_ = (1.0 - alpha) * np.exp(
-        counts * log_g - g - sps.gammaln(counts + 1)
-    )
+
+    zero_mask = counts == 0
+    p_ = (1.0 - alpha) * np.exp(counts * log_g - g - sps.gammaln(counts + 1))
     return zero_mask * (alpha + p_) + (1.0 - zero_mask) * p_
 
 
@@ -99,7 +92,7 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     """
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
-    
+
     :param np.array counts: count array (K,)
     :param np.array rate: rate array
     :param np.array r_inv: 1/r array
@@ -108,18 +101,26 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     g = (rate * sim_time)[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
     r_inv = r_inv[..., None]
-    
-    asymptotic_mask = (r_inv < 1e-4)
+
+    asymptotic_mask = r_inv < 1e-4
     r = 1.0 / (r_inv + asymptotic_mask)
 
     base_terms = log_g * counts - sps.gammaln(counts + 1)
     log_terms = (
-        sps.loggamma(r + counts) - sps.loggamma(r) - (counts + r) * np.log(g + r) + r * np.log(r)
+        sps.loggamma(r + counts)
+        - sps.loggamma(r)
+        - (counts + r) * np.log(g + r)
+        + r * np.log(r)
     )
     ll_r = base_terms + log_terms
-    ll_r_inv = base_terms - g - np.log(
-        1.0 + asymptotic_mask * r_inv * (counts**2 + 1.0 - counts * (3 / 2 + g)))
-    
+    ll_r_inv = (
+        base_terms
+        - g
+        - np.log(
+            1.0 + asymptotic_mask * r_inv * (counts**2 + 1.0 - counts * (3 / 2 + g))
+        )
+    )
+
     ll = asymptotic_mask * ll_r_inv + (1 - asymptotic_mask) * ll_r
     return np.exp(ll)
 
@@ -128,7 +129,7 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     """
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
-    
+
     :param np.array counts: count array (K,)
     :param np.array rate: rate array
     :param np.array nu: dispersion parameter array
@@ -142,7 +143,9 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     lnum = log_g * j
     lden = np.log(sps.factorial(j)) * nu
     logsumexp_Z = sps.logsumexp(lnum - lden, axis=-1)[..., None]
-    return np.exp(log_g * counts - logsumexp_Z - sps.gammaln(counts + 1) * nu)  # (..., K)
+    return np.exp(
+        log_g * counts - logsumexp_Z - sps.gammaln(counts + 1) * nu
+    )  # (..., K)
 
 
 def cmp_moments(k, rate, nu, sim_time, J=100):
@@ -180,9 +183,7 @@ def counts_to_quantiles(P_count, counts, rng):
 
     cumP = np.cumsum(P_count, axis=-1)  # T, K
     tt = np.arange(counts.shape[0])
-    quantiles = (
-        cumP[tt, counts] - P_count[tt, counts] * deq_noise
-    )
+    quantiles = cumP[tt, counts] - P_count[tt, counts] * deq_noise
     return quantiles
 
 
@@ -201,7 +202,6 @@ def quantile_Z_mapping(x, inverse=False, LIM=1e-15):
         _q[_q > 1.0 - LIM] = 1.0 - LIM
         Z = scstats.norm.isf(_q)
         return Z
-    
 
 
 def KS_sampling_dist(x, samples, K=100000):

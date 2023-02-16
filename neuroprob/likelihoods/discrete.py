@@ -212,7 +212,6 @@ class _count_model(base._likelihood):
         return self.nll(b, rates, n_l_rates, spikes, neuron, disper_param), ws
 
 
-
 class Bernoulli(_count_model):
     """
     Inhomogeneous Bernoulli likelihood, limits the count to binary trains.
@@ -510,11 +509,11 @@ class Negative_binomial(_count_model):
         the dispersion parameter rather than its own dispersion parameters.
 
         .. math::
-            P(n|\lambda, r) = \frac{\lambda^n}{n!} \frac{\Gamma(r+n)}{\Gamma(r) \, (r+\lamba)^n} 
+            P(n|\lambda, r) = \frac{\lambda^n}{n!} \frac{\Gamma(r+n)}{\Gamma(r) \, (r+\lamba)^n}
                 \left( 1 + \frac{\lambda}{r} \right)^{-r}
 
         where the mean is related to the conventional parameter :math:`\lambda = \frac{pr}{1-p}`
-        
+
         We parameterize the likelihood with :math:`r^{-1}`, with the Poisson limit (:math:`r^{-1} \to 0`)
         using a Taylor series expansion in :math:`r^{-1}` retaining :math:`\log{1 + O(r^{-1})}`.
         This allows one to reach the Poisson limit numerically.
@@ -532,11 +531,11 @@ class Negative_binomial(_count_model):
         if disper_param is None:
             disper_param = self.r_inv.expand(1, self.neurons)[:, neuron, None]
         r_inv = disper_param
-        
+
         # when r becomes very large, parameterization in r becomes numerically unstable
-        asymptotic_mask = (r_inv < 1e-4)  # use Taylor expansion in 1/r
+        asymptotic_mask = r_inv < 1e-4  # use Taylor expansion in 1/r
         r = 1.0 / (r_inv + asymptotic_mask)  # add mask not using r to avoid NaNs
-        
+
         tfact, lfact = self.get_saved_factors(b, neuron, spikes)
         lambd = rates * self.tbin
         fac_lgamma = -torch.lgamma(spikes + r) + torch.lgamma(r)
@@ -544,12 +543,13 @@ class Negative_binomial(_count_model):
 
         nll_r = fac_power + fac_lgamma
         nll_r_inv = lambd + torch.log(
-            1.0 + asymptotic_mask * r_inv * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
+            1.0
+            + asymptotic_mask * r_inv * (spikes**2 + 1.0 - spikes * (3 / 2 + lambd))
         )  # Taylor expansion in 1/r
 
         nll = -n_l_rates - tfact + lfact
         asymptotic_mask = asymptotic_mask.type(nll.dtype).expand(*nll.shape)
-        nll = nll + asymptotic_mask * nll_r_inv + (1. - asymptotic_mask) * nll_r
+        nll = nll + asymptotic_mask * nll_r_inv + (1.0 - asymptotic_mask) * nll_r
         return nll.sum(1)
 
     def sample(self, rate, neuron=None, XZ=None, rng=None):
@@ -728,7 +728,9 @@ class COM_Poisson(_count_model):
         else:
             samples = rate.shape[0]
             with torch.no_grad():
-                log_nu = self.sample_dispersion(XZ, rate.shape[0] // XZ.shape[0], neuron)
+                log_nu = self.sample_dispersion(
+                    XZ, rate.shape[0] // XZ.shape[0], neuron
+                )
             nu = torch.exp(log_nu).cpu().numpy()
 
         return gen_CMP(rng, lambd, nu)
@@ -761,8 +763,7 @@ class hCOM_Poisson(COM_Poisson):
     def KL_prior(self):
         return self.dispersion_mapping.KL_prior()
 
-    
-    
+
 # UCM
 class Parallel_Linear(nn.Module):
     """

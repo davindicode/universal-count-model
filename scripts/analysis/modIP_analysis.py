@@ -19,9 +19,7 @@ import models
 import utils
 
 
-def latent_observed(
-    checkpoint_dir, config_names, dataset_dict, seed, device
-):
+def latent_observed(checkpoint_dir, config_names, dataset_dict, seed, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
     gt_a = dataset_dict["covariates"]["a"]
@@ -30,14 +28,14 @@ def latent_observed(
     pick_neurons = list(range(neurons))
 
     ### neuron subgroup likelihood CV ###
-    seeds = [seed, seed+1]
+    seeds = [seed, seed + 1]
 
     n_group = np.arange(5)
     val_neuron = [n_group, n_group + 10, n_group + 20, n_group + 30, n_group + 40]
 
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000
-    
+
     cv_Ell = []
     for en, name in enumerate(config_names):
         for kcv in kcvs:
@@ -50,7 +48,7 @@ def latent_observed(
                 batch_info,
                 device,
             )
-            
+
             if en > 1:
                 for v_neuron in val_neuron:
 
@@ -64,7 +62,7 @@ def latent_observed(
 
                         ll, _ = models.LVM_Ell(
                             full_model,
-                            val_dict, 
+                            val_dict,
                             f_neuron,
                             v_neuron,
                             beta=0.0,
@@ -93,7 +91,7 @@ def latent_observed(
     cv_Ell = np.array(cv_Ell).reshape(len(config_names), len(kcvs), len(val_neuron))
 
     ### compute tuning curves and latent trajectories for XZ joint regression-latent model ###
-    config_name = config_names[-1] + '-1'
+    config_name = config_names[-1] + "-1"
     batch_info = 1000
 
     full_model, training_loss, fit_dict, val_dict = models.load_model(
@@ -105,8 +103,7 @@ def latent_observed(
     )
 
     # latents
-    X_loc, X_std = full_model.input_group.input_1.variational.eval_moments(
-        0, ts)
+    X_loc, X_std = full_model.input_group.input_1.variational.eval_moments(0, ts)
     X_loc = X_loc.data.cpu().numpy()[:, 0]
     X_std = X_std.data.cpu().numpy()[:, 0]
 
@@ -118,12 +115,10 @@ def latent_observed(
     # tuning
     steps = 100
     covariates_a = np.linspace(X_loc.min(), X_loc.max(), steps)
-    covs_list = [
-        0.0 * torch.ones(steps),
-        torch.from_numpy(covariates_a)
-    ]
+    covs_list = [0.0 * torch.ones(steps), torch.from_numpy(covariates_a)]
     P_mc = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping, full_model.likelihood, covs_list, pick_neurons, MC=1000).cpu()
+        full_model.mapping, full_model.likelihood, covs_list, pick_neurons, MC=1000
+    ).cpu()
 
     x_counts = torch.arange(max_count + 1)
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
@@ -156,7 +151,7 @@ def latent_observed(
         "covariates_a": covariates_a,
         "avg_percentiles": avg_percentiles,
         "FF_percentiles": FF_percentiles,
-        "gt_a": gt_a, 
+        "gt_a": gt_a,
         "gt_mean": gt_mean,
         "gt_FF": gt_FF,
     }
@@ -170,7 +165,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
     NN = len(pick_neurons)
-    
+
     # KS framework
     kcvs = [2, 5, 8]  # validation sets chosen in 10-fold split of data
     batch_info = 5000
@@ -194,24 +189,35 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
 
                 if type(full_model.likelihood) == nprb.likelihoods.Poisson:
                     rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping, full_model.likelihood.f, covariates, 1000, pick_neurons)
-                    
+                        full_model.mapping,
+                        full_model.likelihood.f,
+                        covariates,
+                        1000,
+                        pick_neurons,
+                    )
+
                     rate = rate.mean(0).cpu().numpy()  # posterior mean
-                    
-                    P.append(nprb.utils.stats.poiss_count_prob(np.arange(max_count+1), rate, tbin))
-                    
+
+                    P.append(
+                        nprb.utils.stats.poiss_count_prob(
+                            np.arange(max_count + 1), rate, tbin
+                        )
+                    )
+
                 else:  # UCM
                     P_mc = nprb.utils.model.compute_UCM_P_count(
                         full_model.mapping,
                         full_model.likelihood,
-                        covariates, 
+                        covariates,
                         pick_neurons,
-                        MC=30, 
+                        MC=30,
                     )
                     P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
-                    
-            P = np.concatenate(P, axis=1)  # count probabilities of shape (neurons, timesteps, count)
-                
+
+            P = np.concatenate(
+                P, axis=1
+            )  # count probabilities of shape (neurons, timesteps, count)
+
             q_ = []
             Z_ = []
             for n in range(NN):
@@ -219,10 +225,10 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
                     0, pick_neurons[n], :
                 ].numpy()
                 q = nprb.utils.stats.counts_to_quantiles(P[n, ...], spike_binned, rng)
-                
+
                 q_.append(q)
                 Z_.append(nprb.utils.stats.quantile_Z_mapping(q))
-                
+
             Qq.append(q_)
             Zz.append(Z_)
 
@@ -236,10 +242,10 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
 
             r = np.array([p[0] for p in Pearson_s])
             r_p = np.array([p[1] for p in Pearson_s])
-            
+
             R.append(r)
             Rp.append(r_p)
-            
+
             ts = fit_dict["spiketrain"].shape[-1]
             fz = 0.5 * np.log((1 + r) / (1 - r)) * np.sqrt(ts - 3)
             Fisher_z.append(fz)
@@ -248,9 +254,14 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
     q_DS, T_DS, T_KS = [], [], []
     for q in Qq:
         for qq in q:
-            T_DS_, T_KS_, sign_DS, sign_KS, p_DS, p_KS = nprb.utils.stats.KS_DS_statistics(
-                qq, alpha=0.05, alpha_s=0.05
-            )
+            (
+                T_DS_,
+                T_KS_,
+                sign_DS,
+                sign_KS,
+                p_DS,
+                p_KS,
+            ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05, alpha_s=0.05)
             T_DS.append(T_DS_)
             T_KS.append(T_KS_)
 
@@ -270,7 +281,6 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, device):
         R_mat_Xp[n, m] = R[0][a]
         R_mat_X[n, m] = R[1][a]
         R_mat_XZ[n, m] = R[2][a]
-        
 
     variability_dict = {
         "q_DS": q_DS,
@@ -325,7 +335,7 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-        
+
     rng = np.random.default_rng(args.seed)
 
     ### names ###

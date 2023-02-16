@@ -3,14 +3,12 @@ import numpy as np
 import torch
 import torch.optim as optim
 
-from ..likelihoods.base import mc_gen
 from ..likelihoods import Universal
 
+from ..likelihoods.base import mc_gen
 
 
-def marginal_posterior_samples(
-    mapping, inv_link, covariates, MC, F_dims, trials=1
-):
+def marginal_posterior_samples(mapping, inv_link, covariates, MC, F_dims, trials=1):
     """
     Sample f(F) from diagonalized variational posterior.
 
@@ -24,8 +22,10 @@ def marginal_posterior_samples(
         else:
             F_mu, F_var = mapping.compute_F(cov)
             samples = mc_gen(F_mu, F_var, MC, F_dims)
-        
-    samples = inv_link(samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples)
+
+    samples = inv_link(
+        samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples
+    )
     return samples
 
 
@@ -41,7 +41,7 @@ def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):
     )
     with torch.no_grad():
         samples = mapping.sample_F(cov, eps)
-    
+
     if trials > 1:
         samples = samples.view(-1, trials, *samples.shape[1:])
 
@@ -66,12 +66,14 @@ def sample_Y(mapping, likelihood, covariates, trials, MC=1):
     return syn_train
 
 
-def compute_UCM_P_count(mapping, likelihood, covariates, show_neuron, MC=1000, trials=1):
+def compute_UCM_P_count(
+    mapping, likelihood, covariates, show_neuron, MC=1000, trials=1
+):
     """
     Compute predictive count distribution given X.
     """
     assert type(likelihood) == Universal
-    
+
     F_dims = likelihood._neuron_to_F(show_neuron)
     with torch.no_grad():
         h = marginal_posterior_samples(

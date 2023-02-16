@@ -16,7 +16,7 @@ def regression_scores(fig, RG_dict):
     region_edge = region_edge[
         0
     ]  # boundary separating PoS (lower) and ANT (higher or equal)
-    
+
     # scores
     widths = [2, 1]
     heights = [1, 3, 2, 3, 1]
@@ -1103,9 +1103,9 @@ def noise_correlations_single_neuron_variability(fig, NC_dict):
 
 def latent_trajs(fig, NC_dict):
     ### data ###
-    
+
     ### plot ###
-    
+
     # trajectories
     X = -0.03
     Y = -0.05
@@ -1216,8 +1216,7 @@ def latent_trajs(fig, NC_dict):
 
 def timescales(fig, RG_dict, NC_dict):
     ### data ###
-    
-    
+
     ### plot ###
     widths = [1]
     heights = [1]
@@ -1273,7 +1272,6 @@ def main():
     # load
     RG_results = pickle.load(open(save_dir + "th1_RG_results.p", "rb"))
     NC_results = pickle.load(open(save_dir + "th1_NC_results.p", "rb"))
-    
 
     # plot
     fig = plt.figure(figsize=(8, 4))
@@ -1312,13 +1310,13 @@ def main():
     noise_correlation_scores(fig, NC_results)
     noise_correlations_mats(fig, NC_results)
     noise_correlations_single_neuron_variability(fig, NC_results)
-    
+
     ### covariates ###
     latent_trajs(fig, NC_results)
     timescales(fig, NC_results)
 
     plt.savefig(save_dir + "plot_hdc.pdf")
-    
+
 
 if __name__ == "__main__":
     main()

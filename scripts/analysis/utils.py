@@ -73,7 +73,6 @@ def ind_to_pair(ind, N):
     return n - 1, m
 
 
-
 # metrics
 def metric(x, y, topology="euclid"):
     """
@@ -131,7 +130,7 @@ def signed_scaled_shift(
 
         optimizer = optim.Adam(p, lr=lr)
         losses = []
-        
+
         iterator = tqdm(range(iters))
         for k in iterator:
             optimizer.zero_grad()
@@ -139,7 +138,7 @@ def signed_scaled_shift(
             loss = (metric(X_, XR, topology) ** 2).mean()
             loss.backward()
             optimizer.step()
-            
+
             l_ = loss.cpu().item()
             losses.append(l_)
             iterator.set_postfix(loss=l_)
@@ -155,10 +154,7 @@ def signed_scaled_shift(
     return aligned, shift_, sign_, scale_, losses_
 
 
-
-def circ_drift_regression(
-    x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_fac=1
-):
+def circ_drift_regression(x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_fac=1):
     t = torch.tensor(t, device=dev)
     X = torch.tensor(x, device=dev)
     Z = torch.tensor(z, device=dev)
@@ -170,7 +166,7 @@ def circ_drift_regression(
 
         optimizer = optim.Adam([a, shift], lr=lr)
         losses = []
-        
+
         iterator = tqdm(range(iters))
         for k in iterator:
             optimizer.zero_grad()
@@ -178,7 +174,7 @@ def circ_drift_regression(
             loss = (utils.latent.metric(Z_, X, topology) ** 2).mean()
             loss.backward()
             optimizer.step()
-            
+
             l_ = loss.cpu().item()
             losses.append(l_)
             iterator.set_postfix(loss=l_)
