@@ -15,13 +15,13 @@ def marginal_posterior_samples(mapping, inv_link, covariates, MC, F_dims, trials
     :returns: F of shape (MCxtrials, outdims, time)
     """
     cov = mapping.to_XZ(covariates, trials)
-    with torch.no_grad():
-        if mapping.MC_only:
-            samples = mapping.sample_F(cov)[:, F_dims, :]
 
-        else:
-            F_mu, F_var = mapping.compute_F(cov)
-            samples = mc_gen(F_mu, F_var, MC, F_dims)
+    if mapping.MC_only:
+        samples = mapping.sample_F(cov)[:, F_dims, :]
+
+    else:
+        F_mu, F_var = mapping.compute_F(cov)
+        samples = mc_gen(F_mu, F_var, MC, F_dims)
 
     samples = inv_link(
         samples.view(-1, trials, *samples.shape[1:]) if trials > 1 else samples
@@ -75,11 +75,10 @@ def compute_UCM_P_count(
     assert type(likelihood) == Universal
 
     F_dims = likelihood._neuron_to_F(show_neuron)
-    with torch.no_grad():
-        h = marginal_posterior_samples(
-            mapping, lambda x: x, covariates, MC, F_dims, trials=trials
-        )
-        logp = likelihood.get_logp(h, show_neuron)  # samples, N, time, K
+    h = marginal_posterior_samples(
+        mapping, lambda x: x, covariates, MC, F_dims, trials=trials
+    )
+    logp = likelihood.get_logp(h, show_neuron)  # samples, N, time, K
 
     P_mc = torch.exp(logp)
     return P_mc
