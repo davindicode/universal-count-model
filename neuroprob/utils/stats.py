@@ -14,7 +14,7 @@ def percentiles_from_samples(
     """
     Compute quantile intervals from samples
 
-    :param torch.tensor samples: input samples of shape (MC, [event_dims...], ts)
+    :param torch.Tensor samples: input samples of shape (MC, [event_dims...], ts)
     :param list percentiles: list of percentile values to look at
     :param int smooth_length: time steps over which to smooth with uniform block
     :returns: list of tensors representing percentile boundaries
@@ -60,8 +60,8 @@ def poiss_count_prob(counts, rate, sim_time):
     """
     Evaluate count data against the Poisson process count distribution.
 
-    :param np.array n: count array (K,)
-    :param np.array rate: rate array
+    :param np.ndarray n: count array (K,)
+    :param np.ndarray rate: rate array
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -74,9 +74,9 @@ def zip_count_prob(counts, rate, alpha, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
 
-    :param np.array counts: count array (K,)
-    :param np.array rate: rate array
-    :param np.array alpha: zero inflation probability array
+    :param np.ndarray counts: count array (K,)
+    :param np.ndarray rate: rate array
+    :param np.ndarray alpha: zero inflation probability array
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -93,9 +93,9 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
 
-    :param np.array counts: count array (K,)
-    :param np.array rate: rate array
-    :param np.array r_inv: 1/r array
+    :param np.ndarray counts: count array (K,)
+    :param np.ndarray rate: rate array
+    :param np.ndarray r_inv: 1/r array
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -130,9 +130,9 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
 
-    :param np.array counts: count array (K,)
-    :param np.array rate: rate array
-    :param np.array nu: dispersion parameter array
+    :param np.ndarray counts: count array (K,)
+    :param np.ndarray rate: rate array
+    :param np.ndarray nu: dispersion parameter array
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -150,8 +150,8 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
 
 def cmp_moments(k, rate, nu, sim_time, J=100):
     """
-    :param np.array k: order of moment to compute
-    :param np.array rate: input rate of shape (neurons, timesteps)
+    :param np.ndarray k: order of moment to compute
+    :param np.ndarray rate: input rate of shape (neurons, timesteps)
     """
     g = rate[None, ...] * sim_time
     log_g = np.log(np.maximum(g, 1e-12))
@@ -175,8 +175,8 @@ def cmp_moments(k, rate, nu, sim_time, J=100):
 # KS and dispersion statistics
 def counts_to_quantiles(P_count, counts, rng):
     """
-    :param np.array P_count: count distribution values (ts, counts)
-    :param np.array counts: count values (ts,)
+    :param np.ndarray P_count: count distribution values (ts, counts)
+    :param np.ndarray counts: count values (ts,)
     """
     counts = counts.astype(int)
     deq_noise = rng.uniform(size=counts.shape)

@@ -19,7 +19,7 @@ def bin_data(
 
     :param int bin_size: desired binning of original time steps into new bin
     :param float bin_time: time step of each original bin or time point
-    :param np.array spiketimes: input spikes in train or index format
+    :param np.ndarray spiketimes: input spikes in train or index format
     :param int track_samples: number of time steps in the recording
     :param tuple behaviour_data: input behavioural time series
     :param bool average_behav: takes the middle element in bins for behavioural data if False
@@ -63,9 +63,9 @@ def binned_to_indices(spiketrain):
     """
     Converts a binned spike train into spike time indices (with duplicates)
 
-    :param np.array spiketrain: the spike train to convert
-    :returns: spike indices denoting spike times in units of time bins
-    :rtype: np.array
+    :param np.ndarray spiketrain: the spike train to convert
+    :returns:
+        spike indices array denoting spike times in units of time bins
     """
     spike_ind = spiketrain.nonzero()[0]
     bigger = np.where(spiketrain > 1)[0]
@@ -130,8 +130,8 @@ def spiketrials_CV(folds, spiketrain, timesamples, behaviour_dict, trial_sizes):
     :param np.ndarray spiketrain: spike train of shape (trials, neuron, timestep) or (neuron, time)
     :param int timesamples: time steps of recording
     :param list behaviour_list: list of covariate time series
-    :returns: cross-validation set as tuple
-    :rtype: tuple
+    :returns:
+        cross-validation set tuple
     """
     if behaviour_dict is not None:
         behaviour_names = list(behaviour_dict.keys())
@@ -456,8 +456,8 @@ def spike_var_MI(rate, prob):
     .. math::
             I(x;\text{spike}) = \int p(x) \, \lambda(x) \, \log{\frac{\lambda(x)}{\langle \lambda \rangle}} \, \mathrm{d}x,
 
-    :param np.array rate: rate variables of shape (neurons, covariate_dims...)
-    :param np.array prob: occupancy values for each bin of shape (covariate_dims...)
+    :param np.ndarray rate: rate variables of shape (neurons, covariate_dims...)
+    :param np.ndarray prob: occupancy values for each bin of shape (covariate_dims...)
     """
     units = rate.shape[0]
 
@@ -502,11 +502,11 @@ def smooth_hist(rate_binned, sm_filter, bound):
     bound indicates the padding mode ('periodic', 'repeat', 'zeros')
     sm_filter should had odd sizes for its shape
 
-    :param np.array rate_binned: input histogram array of shape (units, ndim_1, ndim_2, ...)
-    :param np.array sm_filter: input filter array of shape (ndim_1, ndim_2, ...)
+    :param np.ndarray rate_binned: input histogram array of shape (units, ndim_1, ndim_2, ...)
+    :param np.ndarray sm_filter: input filter array of shape (ndim_1, ndim_2, ...)
     :param list bound: list of strings (per dimension) to indicate convolution boundary conditions
-    :returns: smoothened histograms
-    :rtype: np.array
+    :returns:
+        array of smoothened histograms
     """
     for s in sm_filter.shape:
         assert s % 2 == 1  # odd shape sizes
@@ -664,7 +664,7 @@ def spike_correlogram(
     .. math::
             C_{ij}(\tau) = \text{Corr}[ S_i(t), S_j(t + \tau) ]
 
-    :param np.array spiketrain: array of population activity of shape (neurons, time)
+    :param np.ndarray spiketrain: array of population activity of shape (neurons, time)
     :param int lag_range:
     :param int N_period:
     :param

@@ -87,7 +87,7 @@ class _dataset:
                 on_isl = False
 
         return island_start_ind, island_size
-    
+
     @staticmethod
     def stitch_nans(series, invalids, angular):
         """
@@ -116,7 +116,7 @@ class _dataset:
                     dseries += 2 * np.pi
 
             series[dinds + ind] = series[ind - 1] + dseries * (dinds + 1) / (size + 1)
-            
+
         return series
 
 
@@ -320,11 +320,11 @@ class peyrache_th1(_dataset):
         hd_beh = ang[window, 1]
 
         # interpolator for invalid points
-        hd_nan = (hd_beh == -1.0)
+        hd_nan = hd_beh == -1.0
         invalids = self.true_subarrays(hd_nan)
         hd_beh = self.stitch_nans(hd_beh, invalids, angular=True)
 
-        xy_nan = (x_beh != x_beh)
+        xy_nan = x_beh != x_beh
         invalids = self.true_subarrays(xy_nan)
         x_beh = self.stitch_nans(x_beh, invalids, angular=False)
         y_beh = self.stitch_nans(y_beh, invalids, angular=False)
@@ -357,7 +357,7 @@ class peyrache_th1(_dataset):
             "x": x_t,
             "y": y_t,
             "hd": hd_t,
-            "invalid_behaviour": invalid_behaviour, 
+            "invalid_behaviour": invalid_behaviour,
         }
 
         ### export ###
@@ -374,44 +374,43 @@ class peyrache_th1(_dataset):
             pickle.dump(data, open(savefile, "wb"), pickle.HIGHEST_PROTOCOL)
 
 
-
-
 def main():
-    save_dir = '/scratches/ramanujan_2/dl543/HDC_PartIII/'
-    data_dir = '/scratches/sagarmatha_2/ktj21/data/crcns/'
-
+    save_dir = "/scratches/ramanujan_2/dl543/HDC_PartIII/"
+    data_dir = "/scratches/sagarmatha_2/ktj21/data/crcns/"
 
     mice_channels = {
-        'Mouse28': {'PoS': [1, 2, 3, 4, 5, 6, 7], 
-                    'ANT': [8, 9, 10, 11]},
+        "Mouse28": {"PoS": [1, 2, 3, 4, 5, 6, 7], "ANT": [8, 9, 10, 11]},
     }
 
-    mice_sessions = {
-        'Mouse28': ['140313']
-    }
-
+    mice_sessions = {"Mouse28": ["140313"]}
 
     # Mice sleep/wake exploration, head direction cells
-    phase = 'wake'
+    phase = "wake"
 
     for mouse_id in mice_sessions.keys():
         for session_id in mice_sessions[mouse_id]:
             print(mouse_id, session_id)
 
             channels = mice_channels[mouse_id]
-            data_class = neural_datasets.peyrache_th1(data_dir+'/th-1/data/', mouse_id, session_id, channels)
+            data_class = neural_datasets.peyrache_th1(
+                data_dir + "/th-1/data/", mouse_id, session_id, channels
+            )
 
             periods = data_class.get_periods()
-            time_limits = [periods['wake'][0]['start'], periods['wake'][0]['end']]  # pick wake session
-            savef = save_dir + 'th1_{}_{}_{}.p'.format(mouse_id, session_id, phase)
+            time_limits = [
+                periods["wake"][0]["start"],
+                periods["wake"][0]["end"],
+            ]  # pick wake session
+            savef = save_dir + "th1_{}_{}_{}.p".format(mouse_id, session_id, phase)
             d = data_class.load_preprocess_save(None, time_limits)
-
-
 
     pprint(periods, indent=2, sort_dicts=False)
 
-    time_limits = [periods['wake'][0]['start'], periods['wake'][0]['end']]  # pick wake session
-    
-    
+    time_limits = [
+        periods["wake"][0]["start"],
+        periods["wake"][0]["end"],
+    ]  # pick wake session
+
+
 if __name__ == "__main__":
     main()

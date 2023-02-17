@@ -12,9 +12,7 @@ import neuroprob.utils as utils
 
 brain_regions = {"ANT": 0, "PoS": 1, "CA1": 2, "mPFC": 3}
 
-mice_sessions = {
-    "Mouse28": ["140313"]
-}
+mice_sessions = {"Mouse28": ["140313"]}
 
 phase = "wake"
 datadir = "/scratches/ramanujan_2/dl543/HDC_PartIII"
@@ -83,7 +81,11 @@ for mouse_id in mice_sessions.keys():
         # binning of covariates and analysis
         bins_hd = 60
         bin_hd = np.linspace(0, 2 * np.pi + 1e-3, bins_hd + 1)
-        hd_rate, hd_occup_time, hd_tot_spikes = utils.neural.occupancy_normalized_histogram(
+        (
+            hd_rate,
+            hd_occup_time,
+            hd_tot_spikes,
+        ) = utils.neural.occupancy_normalized_histogram(
             tbin, 0.0, (rhd_t,), (bin_hd,), spiketimes=r_t_spike
         )
         hd_prob = hd_occup_time / hd_occup_time.sum()
