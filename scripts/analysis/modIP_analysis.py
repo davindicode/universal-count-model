@@ -115,9 +115,10 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, gt_modIP, seed, 
     steps = 100
     covariates_a = np.linspace(X_loc.min(), X_loc.max(), steps)
     covs_list = [0.0 * torch.ones(steps), torch.from_numpy(covariates_a)]
-    P_mc = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping, full_model.likelihood, covs_list, pick_neurons, MC=1000
-    ).cpu()
+    with torch.no_grad():
+        P_mc = nprb.utils.model.compute_UCM_P_count(
+            full_model.mapping, full_model.likelihood, covs_list, pick_neurons, MC=1000
+        ).cpu()
 
     x_counts = torch.arange(max_count + 1)
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
@@ -182,35 +183,36 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
             )
 
             P = []
-            for batch in range(full_model.input_group.batches):
-                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+            with torch.no_grad():
+                for batch in range(full_model.input_group.batches):
+                    covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
-                if type(full_model.likelihood) == nprb.likelihoods.Poisson:
-                    rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping,
-                        full_model.likelihood.f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
-
-                    rate = rate.mean(0).cpu().numpy()  # posterior mean
-
-                    P.append(
-                        nprb.utils.stats.poiss_count_prob(
-                            np.arange(max_count + 1), rate, tbin
+                    if type(full_model.likelihood) == nprb.likelihoods.Poisson:
+                        rate = nprb.utils.model.marginal_posterior_samples(
+                            full_model.mapping,
+                            full_model.likelihood.f,
+                            covariates,
+                            1000,
+                            pick_neurons,
                         )
-                    )
 
-                else:  # UCM
-                    P_mc = nprb.utils.model.compute_UCM_P_count(
-                        full_model.mapping,
-                        full_model.likelihood,
-                        covariates,
-                        pick_neurons,
-                        MC=30,
-                    )
-                    P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
+                        rate = rate.mean(0).cpu().numpy()  # posterior mean
+
+                        P.append(
+                            nprb.utils.stats.poiss_count_prob(
+                                np.arange(max_count + 1), rate, tbin
+                            )
+                        )
+
+                    else:  # UCM
+                        P_mc = nprb.utils.model.compute_UCM_P_count(
+                            full_model.mapping,
+                            full_model.likelihood,
+                            covariates,
+                            pick_neurons,
+                            MC=30,
+                        )
+                        P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
 
             P = np.concatenate(
                 P, axis=1

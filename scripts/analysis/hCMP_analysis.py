@@ -80,9 +80,10 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
 
     covariates = [torch.from_numpy(hd)]
 
-    P_mc = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=1000
-    )
+    with torch.no_grad():
+        P_mc = nprb.utils.model.compute_UCM_P_count(
+            full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=1000
+        )
     P_rg = P_mc.mean(0).cpu().numpy()
 
     # count distributions
@@ -161,60 +162,61 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
             )
 
             P = []
-            for batch in range(full_model.input_group.batches):
-                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+            with torch.no_grad():
+                for batch in range(full_model.input_group.batches):
+                    covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
-                if type(full_model.likelihood) == nprb.likelihoods.Poisson:
-                    rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping,
-                        full_model.likelihood.f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
-
-                    rate = rate.mean(0).cpu().numpy()  # posterior mean
-
-                    P.append(
-                        nprb.utils.stats.poiss_count_prob(
-                            np.arange(max_count + 1), rate, tbin
+                    if type(full_model.likelihood) == nprb.likelihoods.Poisson:
+                        rate = nprb.utils.model.marginal_posterior_samples(
+                            full_model.mapping,
+                            full_model.likelihood.f,
+                            covariates,
+                            1000,
+                            pick_neurons,
                         )
-                    )
 
-                elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
-                    rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping,
-                        full_model.likelihood.f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
-                    r_inv = nprb.utils.model.marginal_posterior_samples(
-                        full_model.likelihood.dispersion_mapping,
-                        full_model.likelihood.dispersion_mapping_f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
+                        rate = rate.mean(0).cpu().numpy()  # posterior mean
 
-                    rate = rate.mean(0).cpu().numpy()  # posterior mean
-                    r_inv = r_inv.mean(0).cpu().numpy()
-
-                    P.append(
-                        nprb.utils.stats.nb_count_prob(
-                            np.arange(max_count + 1), rate, r_inv, tbin
+                        P.append(
+                            nprb.utils.stats.poiss_count_prob(
+                                np.arange(max_count + 1), rate, tbin
+                            )
                         )
-                    )
 
-                else:  # UCM
-                    P_mc = nprb.utils.model.compute_UCM_P_count(
-                        full_model.mapping,
-                        full_model.likelihood,
-                        covariates,
-                        pick_neurons,
-                        MC=100,
-                    )
-                    P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
+                    elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
+                        rate = nprb.utils.model.marginal_posterior_samples(
+                            full_model.mapping,
+                            full_model.likelihood.f,
+                            covariates,
+                            1000,
+                            pick_neurons,
+                        )
+                        r_inv = nprb.utils.model.marginal_posterior_samples(
+                            full_model.likelihood.dispersion_mapping,
+                            full_model.likelihood.dispersion_mapping_f,
+                            covariates,
+                            1000,
+                            pick_neurons,
+                        )
+
+                        rate = rate.mean(0).cpu().numpy()  # posterior mean
+                        r_inv = r_inv.mean(0).cpu().numpy()
+
+                        P.append(
+                            nprb.utils.stats.nb_count_prob(
+                                np.arange(max_count + 1), rate, r_inv, tbin
+                            )
+                        )
+
+                    else:  # UCM
+                        P_mc = nprb.utils.model.compute_UCM_P_count(
+                            full_model.mapping,
+                            full_model.likelihood,
+                            covariates,
+                            pick_neurons,
+                            MC=100,
+                        )
+                        P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
 
             P = np.concatenate(
                 P, axis=1
@@ -405,9 +407,10 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
         )
 
         cov_list = [torch.from_numpy(covariates_aligned)]
-        P_mc = nprb.utils.model.compute_UCM_P_count(
-            full_model.mapping, full_model.likelihood, cov_list, pick_neurons, MC=1000
-        ).cpu()
+        with torch.no_grad():
+            P_mc = nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping, full_model.likelihood, cov_list, pick_neurons, MC=1000
+            ).cpu()
 
         avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
         xcvar = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2

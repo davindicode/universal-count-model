@@ -13,52 +13,6 @@ import neuroprob as nprb
 from neuroprob import utils
 
 
-### UCM ###
-def marginalized_UCM_P_count(
-    full_model, eval_points, eval_dims, rcov, bs, use_neuron, MC=100, skip=1
-):
-    """
-    Marginalize over the behaviour p(X) for X not evaluated over.
-
-    :param List eval_points: list of ndarrays of values that you want to compute the marginal SCD at
-    :param List eval_dims: the dimensions that are not marginalized evaluated at eval_points
-    :param List rcov: list of covariate time series
-    :param int bs: batch size
-    :param List use_neuron: list of neurons used
-    :param int skip: only take every skip time points of the behaviour time series for marginalisation
-    """
-    rcov = [rc[::skip] for rc in rcov]  # set dilution
-    animal_T = rcov[0].shape[0]
-    Ep = eval_points[0].shape[0]
-    tot_len = Ep * animal_T
-
-    covariates = []
-    k = 0
-    for d, rc in enumerate(rcov):
-        if d in eval_dims:
-            covariates.append(torch.repeat_interleave(eval_points[k], animal_T))
-            k += 1
-        else:
-            covariates.append(rc.repeat(Ep))
-
-    km = full_model.likelihood.K + 1
-    P_tot = torch.empty((MC, len(use_neuron), Ep, km), dtype=torch.float)
-    batches = int(np.ceil(animal_T / bs))
-    for e in range(Ep):
-        print("\r" + str(e), end="", flush=True)
-        P_ = torch.empty((MC, len(use_neuron), animal_T, km), dtype=torch.float)
-        for b in range(batches):
-            bcov = [
-                c[e * animal_T : (e + 1) * animal_T][b * bs : (b + 1) * bs]
-                for c in covariates
-            ]
-            P_mc = compute_P(full_model, bcov, use_neuron, MC=MC).cpu()
-            P_[..., b * bs : (b + 1) * bs, :] = P_mc
-
-        P_tot[..., e, :] = P_.mean(-2)
-
-    return P_tot
-
 
 ### stats ###
 def ind_to_pair(ind, N):

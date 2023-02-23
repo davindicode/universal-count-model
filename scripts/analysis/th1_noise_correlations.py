@@ -417,11 +417,12 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             np.linspace(-0.2, 0.2, B)[None, :].repeat(A, axis=0).flatten(),
         ]
 
-        P_mean = (
-            nprb.utils.model.compute_UCM_P_count(full_model, covariates, [n], MC=100)
-            .mean(0)
-            .cpu()
-        )
+        with torch.no_grad():
+            P_mean = (
+                nprb.utils.model.compute_UCM_P_count(full_model, covariates, [n], MC=100)
+                .mean(0)
+                .cpu()
+            )
         avg = (x_counts[None, :] * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
         var = (x_counts[None, :] ** 2 * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
         xcvar = var - avg**2

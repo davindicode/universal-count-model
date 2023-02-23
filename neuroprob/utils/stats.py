@@ -2,56 +2,139 @@ import numpy as np
 
 import scipy.special as sps
 import scipy.stats as scstats
+from scipy import signal
 
 import torch
 import torch.nn as nn
 
 
+
+# histograms
+def smooth_hist(hist_values, sm_filter, bound):
+    r"""
+    Neurons is the batch dimension, parallelize the convolution for 1D, 2D or 3D
+    bound indicates the padding mode ('periodic', 'repeat', 'zeros')
+    sm_filter should had odd sizes for its shape
+
+    :param np.ndarray hist_values: input histogram array of shape (units, ndim_1, ndim_2, ...)
+    :param np.ndarray sm_filter: input filter array of shape (ndim_1, ndim_2, ...)
+    :param list bound: list of strings (per dimension) to indicate convolution boundary conditions
+    :returns:
+        array of smoothened histograms
+    """
+    for s in sm_filter.shape:
+        assert s % 2 == 1  # odd shape sizes
+    units = hist_values.shape[0]
+    dim = len(hist_values.shape) - 1
+    assert dim > 0
+    step_sm = np.array(sm_filter.shape) // 2
+
+    for d in range(dim):
+        if d > 0:
+            hist_values = np.swapaxes(hist_values, 1, d + 1)
+        if bound[d] == "repeat":
+            hist_values = np.concatenate(
+                (
+                    np.repeat(hist_values[:, :1, ...], step_sm[d], axis=1),
+                    hist_values,
+                    np.repeat(hist_values[:, -1:, ...], step_sm[d], axis=1),
+                ),
+                axis=1,
+            )
+        elif bound[d] == "periodic":
+            hist_values = np.concatenate(
+                (
+                    hist_values[:, -step_sm[d] :, ...],
+                    hist_values,
+                    hist_values[:, : step_sm[d], ...],
+                ),
+                axis=1,
+            )
+        elif bound[d] == "zeros":
+            zz = np.zeros_like(hist_values[:, : step_sm[d], ...])
+            hist_values = np.concatenate((zz, hist_values, zz), axis=1)
+        else:
+            raise NotImplementedError
+
+        if d > 0:
+            hist_values = np.swapaxes(hist_values, 1, d + 1)
+
+    hist_smth = []
+    for u in range(units):
+        hist_smth.append(signal.convolve(hist_values[u], sm_filter, mode="valid"))
+    hist_smth = np.array(hist_smth)
+
+    return hist_smth
+
+
+def KDE_behaviour(bins_tuple, covariates, sm_size, L, smooth_modes):
+    """
+    Kernel density estimation of the covariates, with Gaussian kernels.
+    """
+    dim = len(bins_tuple)
+    assert (
+        (dim == len(covariates))
+        and (dim == len(sm_size))
+        and (dim == len(smooth_modes))
+    )
+    time_samples = covariates[0].shape[0]
+    c_bins = ()
+    tg_c = ()
+    for k, cov in enumerate(covariates):
+        c_bins += (len(bins_tuple[k]) - 1,)
+        tg_c += (np.digitize(cov, bins_tuple[k]) - 1,)
+
+    # get time spent in each bin
+    bin_time = np.zeros(tuple(len(bins) - 1 for bins in bins_tuple))
+    np.add.at(bin_time, tg_c, 1)
+    bin_time /= bin_time.sum()  # normalize
+
+    sm_centre = np.array(sm_size) // 2
+    sm_filter = np.ones(tuple(sm_size))
+    ones_arr = np.ones_like(sm_filter)
+    for d in range(dim):
+        size = sm_size[d]
+        centre = sm_centre[d]
+        L_ = L[d]
+
+        if d > 0:
+            bin_time = np.swapaxes(bin_time, 0, d)
+            ones_arr = np.swapaxes(ones_arr, 0, d)
+            sm_filter = np.swapaxes(sm_filter, 0, d)
+
+        for k in range(size):
+            sm_filter[k, ...] *= (
+                np.exp(-0.5 * (((k - centre) / L_) ** 2)) * ones_arr[k, ...]
+            )
+
+        if d > 0:
+            bin_time = np.swapaxes(bin_time, 0, d)
+            ones_arr = np.swapaxes(ones_arr, 0, d)
+            sm_filter = np.swapaxes(sm_filter, 0, d)
+
+    smth_time = smooth_hist(bin_time[None, ...], sm_filter, smooth_modes)
+    smth_time /= smth_time.sum()  # normalize
+    return smth_time[0, ...], bin_time
+
+
 # percentiles
 def percentiles_from_samples(
-    samples, percentiles=[0.05, 0.5, 0.95], smooth_length=1, padding_mode="replicate"
+    samples, percentiles=[0.05, 0.5, 0.95]
 ):
     """
     Compute quantile intervals from samples
 
-    :param torch.Tensor samples: input samples of shape (MC, [event_dims...], ts)
+    :param torch.Tensor samples: input samples of shape (MC, ...)
     :param list percentiles: list of percentile values to look at
-    :param int smooth_length: time steps over which to smooth with uniform block
-    :returns: list of tensors representing percentile boundaries
-    :rtype: list
+    :returns:
+        list of tensors representing percentile boundaries
     """
     num_samples = samples.size(0)
-    ts = samples.size(-1)
-    prev_shape = samples.shape[1:]
-
-    if len(samples.shape) == 2:
-        samples = samples[:, None, :]
-    else:
-        samples = samples.view(num_samples, -1, ts)
-
     samples = samples.sort(dim=0)[0]  # sort for percentiles
+    
     percentile_samples = [
         samples[int(num_samples * percentile)] for percentile in percentiles
     ]
-
-    if smooth_length > 1:  # smooth the samples
-        with torch.no_grad():
-            Conv1D = nn.Conv1d(
-                1,
-                1,
-                smooth_length,
-                padding=smooth_length // 2,
-                bias=False,
-                padding_mode=padding_mode,
-            ).to(samples.device)
-            Conv1D.weight.fill_(1.0 / smooth_length)
-            percentile_samples = [
-                Conv1D(p[:, None, :]).view(prev_shape) for p in percentile_samples
-            ]
-
-    else:  # reshape
-        percentile_samples = [p.view(prev_shape) for p in percentile_samples]
-
     return percentile_samples
 
 
@@ -141,7 +224,7 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
 
     j = np.arange(J + 1)
     lnum = log_g * j
-    lden = np.log(sps.factorial(j)) * nu
+    lden = sps.gammaln(j + 1) * nu
     logsumexp_Z = sps.logsumexp(lnum - lden, axis=-1)[..., None]
     return np.exp(
         log_g * counts - logsumexp_Z - sps.gammaln(counts + 1) * nu
@@ -161,12 +244,8 @@ def cmp_moments(k, rate, nu, sim_time, J=100):
     n = np.arange(1, J + 1)[:, None, None]
     j = np.arange(J + 1)[:, None, None]
     lnum = log_g * j
-    lden = np.log(sps.factorial(j)) * nu
-    dl = lnum - lden
-    dl_m = dl.max(axis=0)
-    logsumexp_Z = (np.log(np.exp(dl - dl_m[None, ...]).sum(0)) + dl_m)[
-        None, ...
-    ]  # numerically stable
+    lden = sps.gammaln(j + 1) * nu
+    logsumexp_Z = sps.logsumexp(lnum - lden, axis=-1)[None, ...]
     return np.exp(
         k * np.log(n) + log_g * n - logsumexp_Z - sps.gammaln(n + 1) * nu
     ).sum(0)
@@ -219,7 +298,7 @@ def KS_sampling_dist(x, samples, K=100000):
     )
 
 
-def KS_DS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
+def KS_DS_statistics(quantiles, alpha=0.05):
     """
     Kolmogorov-Smirnov and dispersion statistics using quantiles.
     """
@@ -238,9 +317,6 @@ def KS_DS_statistics(quantiles, alpha=0.05, alpha_s=0.05):
 
     sign_KS = np.sqrt(-0.5 * np.log(alpha)) / np.sqrt(samples)
     sign_DS = sps.erfinv(1 - alpha / 2.0) * np.sqrt(2) * np.sqrt(2 / (samples - 1))
-    # ref_sign_DS = sps.erfinv(1-alpha_s/2.)*np.sqrt(2)
-    # T_DS /= ref_sign_DS
-    # sign_DS /= ref_sign_DS
 
     p_DS = 2.0 * (1 - scstats.norm.cdf(T_DS_))
     p_KS = np.exp(-2 * samples * T_KS**2)

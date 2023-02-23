@@ -108,60 +108,61 @@ def regression(
             ts = fit_dict["spiketrain"].shape[-1]
 
             P = []
-            for batch in range(full_model.input_group.batches):
-                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+            with torch.no_grad():
+                for batch in range(full_model.input_group.batches):
+                    covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
-                if type(full_model.likelihood) == nprb.likelihoods.Poisson:
-                    rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping,
-                        full_model.likelihood.f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
-
-                    rate = rate.mean(0).cpu().numpy()  # posterior mean
-
-                    P.append(
-                        nprb.utils.stats.poiss_count_prob(
-                            np.arange(max_count + 1), rate, tbin
+                    if type(full_model.likelihood) == nprb.likelihoods.Poisson:
+                        rate = nprb.utils.model.marginal_posterior_samples(
+                            full_model.mapping,
+                            full_model.likelihood.f,
+                            covariates,
+                            1000,
+                            pick_neurons,
                         )
-                    )
 
-                elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
-                    rate = nprb.utils.model.marginal_posterior_samples(
-                        full_model.mapping,
-                        full_model.likelihood.f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
-                    r_inv = nprb.utils.model.marginal_posterior_samples(
-                        full_model.likelihood.dispersion_mapping,
-                        full_model.likelihood.dispersion_mapping_f,
-                        covariates,
-                        1000,
-                        pick_neurons,
-                    )
+                        rate = rate.mean(0).cpu().numpy()  # posterior mean
 
-                    rate = rate.mean(0).cpu().numpy()  # posterior mean
-                    r_inv = r_inv.mean(0).cpu().numpy()
-
-                    P.append(
-                        nprb.utils.stats.nb_count_prob(
-                            np.arange(max_count + 1), rate, r_inv, tbin
+                        P.append(
+                            nprb.utils.stats.poiss_count_prob(
+                                np.arange(max_count + 1), rate, tbin
+                            )
                         )
-                    )
 
-                else:  # UCM
-                    P_mc = nprb.utils.model.compute_UCM_P_count(
-                        full_model.mapping,
-                        full_model.likelihood,
-                        covariates,
-                        pick_neurons,
-                        MC=100,
-                    )
-                    P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
+                    elif type(full_model.likelihood) == nprb.likelihoods.hNegative_binomial:
+                        rate = nprb.utils.model.marginal_posterior_samples(
+                            full_model.mapping,
+                            full_model.likelihood.f,
+                            covariates,
+                            1000,
+                            pick_neurons,
+                        )
+                        r_inv = nprb.utils.model.marginal_posterior_samples(
+                            full_model.likelihood.dispersion_mapping,
+                            full_model.likelihood.dispersion_mapping_f,
+                            covariates,
+                            1000,
+                            pick_neurons,
+                        )
+
+                        rate = rate.mean(0).cpu().numpy()  # posterior mean
+                        r_inv = r_inv.mean(0).cpu().numpy()
+
+                        P.append(
+                            nprb.utils.stats.nb_count_prob(
+                                np.arange(max_count + 1), rate, r_inv, tbin
+                            )
+                        )
+
+                    else:  # UCM
+                        P_mc = nprb.utils.model.compute_UCM_P_count(
+                            full_model.mapping,
+                            full_model.likelihood,
+                            covariates,
+                            pick_neurons,
+                            MC=100,
+                        )
+                        P.append(P_mc.mean(0).cpu().numpy())  # take mean over MC samples
 
             P = np.concatenate(
                 P, axis=1
@@ -257,31 +258,32 @@ def binning_variability(checkpoint_dir, config_names, binnings, dataset_dict, ba
         ts = fit_dict["spiketrain"].shape[-1]
 
         avg_model, var_model, ff_model = [], [], []
-        for batch in range(full_model.input_group.batches):
-            covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+        with torch.no_grad():
+            for batch in range(full_model.input_group.batches):
+                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
 
-            P_mc = (
-                nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping,
-                    full_model.likelihood,
-                    covariates,
-                    pick_neurons,
-                    MC=100,
-                )
-                .mean(0)
-                .cpu()
-                .numpy()
-            )  # count probabilities of shape (neurons, timesteps, count)
+                P_mc = (
+                    nprb.utils.model.compute_UCM_P_count(
+                        full_model.mapping,
+                        full_model.likelihood,
+                        covariates,
+                        pick_neurons,
+                        MC=100,
+                    )
+                    .mean(0)
+                    .cpu()
+                    .numpy()
+                )  # count probabilities of shape (neurons, timesteps, count)
 
-            max_count = P_mc.shape[-1] - 1
-            x_counts = np.arange(max_count + 1)
+                max_count = P_mc.shape[-1] - 1
+                x_counts = np.arange(max_count + 1)
 
-            avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
-            var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-            ff = var / (avg + 1e-12)
-            avg_model.append(avg)
-            var_model.append(var)
-            ff_model.append(ff)
+                avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
+                var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
+                ff = var / (avg + 1e-12)
+                avg_model.append(avg)
+                var_model.append(var)
+                ff_model.append(ff)
 
         avg_binnings.append(np.concatenate(avg_model, axis=-1).mean(0))
         var_binnings.append(np.concatenate(var_model, axis=-1).mean(0))
@@ -338,16 +340,17 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     ### hd ###
     steps = 100
-    P_tot = utils.marginalized_UCM_P_count(
-        full_model,
-        [np.linspace(0, 2 * np.pi, steps)],
-        [0],
-        rcov,
-        batch_size,
-        pick_neurons,
-        MC=MC,
-        skip=skip,
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
+            full_model,
+            [np.linspace(0, 2 * np.pi, steps)],
+            [0],
+            rcov,
+            batch_size,
+            pick_neurons,
+            MC=MC,
+            skip=skip,
+        )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
@@ -380,9 +383,11 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
     steps = 100
     w_edge = (-rcov[1].min() + rcov[1].max()) / 2.0
     covariates_w = np.linspace(-w_edge, w_edge, steps)
-    P_tot = model_utils.marginalized_P(
-        full_model, [covariates_w], [1], rcov, batch_size, pick_neurons, MC=MC, skip=skip
-    )
+    
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UMC_P_count(
+            full_model, [covariates_w], [1], rcov, batch_size, pick_neurons, MC=MC, skip=skip
+        )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
@@ -398,16 +403,17 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     ### speed ###
     steps = 100
-    P_tot = utils.marginalized_UCM_P_count(
-        full_model,
-        [np.linspace(0, 30.0, steps)],
-        [2],
-        rcov,
-        batch_size,
-        pick_neurons,
-        MC=MC,
-        skip=skip,
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
+            full_model,
+            [np.linspace(0, 30.0, steps)],
+            [2],
+            rcov,
+            batch_size,
+            pick_neurons,
+            MC=MC,
+            skip=skip,
+        )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
@@ -423,16 +429,17 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
 
     ### time ###
     steps = 100
-    P_tot = model_utils.marginalized_P(
-        full_model,
-        [np.linspace(0, TT, steps)],
-        [5],
-        rcov,
-        batch_size,
-        pick_neurons,
-        MC=MC,
-        skip=skip,
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
+            full_model,
+            [np.linspace(0, TT, steps)],
+            [5],
+            rcov,
+            batch_size,
+            pick_neurons,
+            MC=MC,
+            skip=skip,
+        )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
@@ -458,9 +465,10 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
         np.linspace(bottom_y, top_y, B)[None, :].repeat(A, axis=0).flatten(),
     ]
 
-    P_tot = model_utils.marginalized_P(
-        full_model, cov_list, [3, 4], rcov, 10000, pick_neurons, MC=MC, skip=skip
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
+            full_model, cov_list, [3, 4], rcov, 10000, pick_neurons, MC=MC, skip=skip
+        )
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
@@ -578,13 +586,14 @@ def tunings(checkpoint_dir, model_name, dataset_dict, device):
         np.linspace(0.0, TT, B)[None, :].repeat(A, axis=0).flatten(),
     ]
 
-    P_mean = (
-        nprb.utils.model.compute_UCM_P_count(
-            full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=MC_
+    with torch.no_grad():
+        P_mean = (
+            nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=MC_
+            )
+            .mean(0)
+            .cpu()
         )
-        .mean(0)
-        .cpu()
-    )
     field_hd_time = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
     # drift and similarity matrix
