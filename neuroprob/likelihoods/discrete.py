@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.distributions as dist
 import torch.nn as nn
-from scipy.special import factorial
+from scipy.special import gammaln
 from torch.nn.parameter import Parameter
 
 from ..base import safe_log
@@ -51,23 +51,27 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
     neurons = lamb.shape[1]
     Y = np.empty(lamb.shape)
 
+    mu = lamb ** (1 / nu)
+    
     for tr in range(trials):
         for n in range(neurons):
-            lamb_, nu_ = lamb[tr, n, :], nu[tr, n, :]
+            mu_, nu_ = mu[tr, n, :], nu[tr, n, :]
 
             # Poisson
             k = 0
             left_bins = np.where(nu_ >= 1)[0]
             while len(left_bins) > 0:
-                lamb__, nu__ = lamb_[left_bins], nu_[left_bins]
-                y_dash = rng.poisson(lamb__)
-                _lamb_ = np.floor(lamb__)
-                alpha = (
-                    lamb__ ** (y_dash - _lamb_) / factorial(y_dash) * factorial(_lamb_)
-                ) ** (nu__ - 1)
+                mu__, nu__ = mu_[left_bins], nu_[left_bins]
+                
+                y_dash = rng.poisson(mu__)  # sample from Poisson
+                
+                _mu_ = np.floor(mu__)
+                log_alpha = (nu__ - 1) * (
+                    (y_dash - _mu_) * np.log(mu__ + 1e-12) - gammaln(y_dash + 1.) + gammaln(_mu_ + 1.)
+                )  # log acceptance probability
 
-                u = rng.uniform(size=lamb__.shape)
-                selected = u <= alpha
+                u = rng.uniform(size=mu__.shape)
+                selected = (u <= np.exp(log_alpha))
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -79,18 +83,19 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
             k = 0
             left_bins = np.where(nu_ < 1)[0]
             while len(left_bins) > 0:
-                lamb__, nu__ = lamb_[left_bins], nu_[left_bins]
-                p = 2 * nu__ / (2 * lamb__ * nu__ + 1 + nu__)
+                mu__, nu__ = mu_[left_bins], nu_[left_bins]
+                
+                p = 2 * nu__ / (2 * mu__ * nu__ + 1 + nu__)
                 u_0 = rng.uniform(size=p.shape)
+                y_dash = np.floor(np.log(u_0) / np.log(1 - p))  # sample from geom(p)
+                
+                a = np.floor(mu__ / (1 - p) ** (1 / nu__))
+                log_alpha = (a - y_dash) * np.log(1 - p) + nu__ * (
+                    (y_dash - a) * np.log(mu__ + 1e-12) - gammaln(y_dash + 1.) + gammaln(a + 1.)
+                )  # log acceptance probability
 
-                y_dash = np.floor(np.log(u_0) / np.log(1 - p))
-                a = np.floor(lamb__ / (1 - p) ** (1 / nu__))
-                alpha = (1 - p) ** (a - y_dash) * (
-                    lamb__ ** (y_dash - a) / factorial(y_dash) * factorial(a)
-                ) ** nu__
-
-                u = rng.uniform(size=lamb__.shape)
-                selected = u <= alpha
+                u = rng.uniform(size=mu__.shape)
+                selected = (u <= np.exp(log_alpha))
                 Y[tr, n, left_bins[selected]] = y_dash[selected]
                 left_bins = left_bins[~selected]
                 if k >= max_rejections:
@@ -633,7 +638,7 @@ class COM_Poisson(_count_model):
     ):
         super().__init__(tbin, neurons, inv_link, tensor_type, strict_likelihood)
         if nu is not None:
-            self.register_parameter("log_nu", Parameter(nu.type(self.tensor_type)))
+            self.register_parameter("log_nu", Parameter(torch.log(nu).type(self.tensor_type)))
 
         self.J = J
         self.register_buffer("powers", torch.arange(self.J + 1).type(self.tensor_type))

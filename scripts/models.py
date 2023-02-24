@@ -1058,14 +1058,15 @@ def load_model(
     model_dict["seed"] = checkpoint["seed"]
 
     has_latent = False if model_dict["z_mode"] == "" else True
+    delay_ind = np.where(np.array(model_dict["delays"]) == delay)[0][0]
     cvdata = preprocess_data(
         dataset_dict,
         model_dict["folds"],
-        [delay],
+        model_dict["delays"],
         [cv_run],
         batch_info,
         has_latent,
-    )[0]
+    )[delay_ind]
 
     fit_data = {
         "spiketrain": cvdata["spiketrain_fit"],

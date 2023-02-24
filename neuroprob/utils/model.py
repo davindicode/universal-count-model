@@ -51,25 +51,25 @@ def sample_tuning_curves(mapping, likelihood, covariates, MC, F_dims, trials=1):
 
 ### UCM ###
 def compute_UCM_P_count(
-    mapping, likelihood, covariates, show_neuron, MC=1000, trials=1
+    mapping, likelihood, covariates, pick_neurons, MC=1000, trials=1
 ):
     """
     Compute predictive count distribution given X.
     """
     assert type(likelihood) == Universal
 
-    F_dims = likelihood._neuron_to_F(show_neuron)
+    F_dims = likelihood._neuron_to_F(pick_neurons)
     h = marginal_posterior_samples(
         mapping, lambda x: x, covariates, MC, F_dims, trials=trials
     )
-    logp = likelihood.get_logp(h, show_neuron)  # samples, N, time, K
+    logp = likelihood.get_logp(h, pick_neurons)  # samples, N, time, K
 
     P_mc = torch.exp(logp)
     return P_mc
 
 
 def marginalize_UCM_P_count(
-    mapping, likelihood, eval_points, eval_dims, rcov, bs, use_neuron, MC=100, skip=1
+    mapping, likelihood, eval_points, eval_dims, rcov, bs, pick_neurons, MC=100, skip=1
 ):
     """
     Marginalize over the behaviour p(X) for X not evaluated over.
@@ -78,7 +78,7 @@ def marginalize_UCM_P_count(
     :param List eval_dims: the dimensions that are not marginalized evaluated at eval_points
     :param List rcov: list of covariate time series
     :param int bs: batch size
-    :param List use_neuron: list of neurons used
+    :param List pick_neurons: list of neurons used
     :param int skip: only take every skip time points of the behaviour time series for marginalisation
     """
     rcov = [rc[::skip] for rc in rcov]  # set dilution
@@ -96,19 +96,27 @@ def marginalize_UCM_P_count(
             covariates.append(rc.repeat(Ep))
 
     km = full_model.likelihood.K + 1
-    P_tot = torch.empty((MC, len(use_neuron), Ep, km), dtype=mapping.tensor_type)
+    P_tot = torch.empty(
+        (MC, len(pick_neurons), Ep, km), 
+        dtype=mapping.tensor_type, 
+        device=likelihood.tbin.device, 
+    )
     
     batches = int(np.ceil(animal_T / bs))
     iterator = tqdm(range(Ep))
     for e in iterator:
-        print("\r" + str(e), end="", flush=True)
-        P_ = torch.empty((MC, len(use_neuron), animal_T, km), dtype=mapping.tensor_type)
+        P_ = torch.empty(
+            (MC, len(pick_neurons), animal_T, km), 
+            dtype=mapping.tensor_type, 
+            device=likelihood.tbin.device, 
+        )
+        
         for b in range(batches):
             bcov = [
                 c[e * animal_T : (e + 1) * animal_T][b * bs : (b + 1) * bs]
                 for c in covariates
             ]
-            P_mc = compute_UCM_P_count(full_model, bcov, use_neuron, MC=MC).cpu()
+            P_mc = compute_UCM_P_count(mapping, likelihood, bcov, pick_neurons, MC=MC)
             P_[..., b * bs : (b + 1) * bs, :] = P_mc
 
         P_tot[..., e, :] = P_.mean(-2)
