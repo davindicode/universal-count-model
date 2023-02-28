@@ -36,7 +36,7 @@ class hCMP_bumps(_bumps):
         # rate tuning curves
         self.angle_0 = np.linspace(0, 2 * np.pi, neurons + 1)[:-1]
         self.beta = rng.uniform(size=(neurons,)) * 2.0 + 0.5
-        self.rate_0 = rng.uniform(size=(neurons,)) * 4.0 + 4.0
+        self.rate_0 = rng.uniform(size=(neurons,)) * 4.0 + 2.0
         self.b = rng.uniform(size=(neurons,)) * 0.2
 
         # dispersion tuning curve
@@ -67,7 +67,7 @@ class IP_bumps(_bumps):
         # angular bumps
         self.angle_0 = np.linspace(0, 2 * np.pi, neurons + 1)[:-1]
         self.beta = rng.uniform(size=(neurons,)) * 2.6 + 0.4
-        self.rate_0 = rng.uniform(size=(neurons,)) * 4.0 + 3.0
+        self.rate_0 = rng.uniform(size=(neurons,)) * 4.0 + 3.2
         self.b = rng.uniform(size=(neurons,)) * 0.1
 
         # attention

@@ -1,11 +1,14 @@
 # A universal probabilistic spike count model reveals ongoing modulation of neural variability (NeurIPS 2021)
 
+TODO:
+- installable + remove sys.adds in code
+
 
 ## Overview
 
 This is the code repository for this [paper](https://proceedings.neurips.cc/paper/2021/hash/6f5216f8d89b086c18298e043bfe48ed-Abstract.html).
 Models are implemented in Python with dependencies on libraries listed below at the end.
-We also include a neural data analysis library called "neuroprob" that was written for constructing scalable neural encoding models for spike count data using a modern deep learning framework (see ```lib/``` for more details).
+We also include a neural data analysis library (see ```neuroprob/```) that was written for constructing scalable neural encoding models for spike count data using a modern deep learning framework.
 The baseline models, along with the Universal Count Model (UCM) proposed in our work, are implemented in the library and can be used for analysis of other neural datasets.
 
 <p align="center">
@@ -14,16 +17,18 @@ The baseline models, along with the Universal Count Model (UCM) proposed in our 
 
 
 
-## Poster
-
-<a href="./media/poster.pdf"><img src="./media/logo.png" alt="poster" style="width:200px;height:200px;"></a>
-
-
-
 ## Reproducing results
 
 
 #### 1. cd into lib/ and install the "neuroprob" library
+
+```
+python3 -m venv /path/environment
+
+. /path/environment/bin/activate
+
+python3 -m pip install -e .
+```
 
 
 #### 1. cd into ./scripts/
@@ -84,32 +89,15 @@ This loads the analysis results and plots paper figures in .pdf and .svg formats
 
 
 
+## Poster
+
+<a href="./media/poster.pdf"><img src="./media/logo.png" alt="poster" style="width:200px;height:200px;"></a>
+
+
+
 ## Neural data analysis library
 
-Here we present a short description of the neural data analysis library used to facilitate constructing scalable probabilsitic neural encoding models.
-The list below shows what has implemented for use so far, see the models.py file for an example of code utilizing the library.
-
-
-
-### Setup
-
-    # inside virtual environment
-    pip install -e .
-
-
-
-### Primitives
-
-There are three kinds of objects that form the building blocks:
-1. Input group *p(X,Z)* and *q(Z)*
-2. Mapping *p(F|X,Z)*
-3. Likelihood *p(Y|F)*
-
-The overal generative model is specified along with the variational posterior through these primitives.
-Input groups can contain observed and latent variables, with different priors one can put onto the latent variables.
-
-
-### Models implemented
+Here we present a short description of the neural data analysis library used to facilitate constructing scalable probabilsitic neural encoding models. See ```examples/``` for illustrative notebooks on fitting models with this framework. Models implemented: 
 
 * Linear-nonlinear and GP mappings
 * LVMs
@@ -123,12 +111,6 @@ Input groups can contain observed and latent variables, with different priors on
     - Universal (this work)
 * Gaussian likelihoods
     - Univariate + heteroscedastic version
-
-
-
-### Dependencies:
-
-
 
 
 

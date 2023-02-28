@@ -1,7 +1,6 @@
 import glob
 
 import pickle
-from pprint import pprint
 
 import h5py  # MATLAB files > v7.3
 import numpy as np
@@ -375,16 +374,28 @@ class peyrache_th1(_dataset):
 
 
 def main():
-    save_dir = "/scratches/ramanujan_2/dl543/HDC_PartIII/"
-    data_dir = "/scratches/sagarmatha_2/ktj21/data/crcns/"
+    ### parser ###
+    parser = argparse.ArgumentParser(
+        usage="%(prog)s [OPTION] [FILE]...",
+        description="Preprocess CRCNS th-1 datasets.",
+    )
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
+    )
 
+    parser.add_argument("--datadir", type=str)
+    parser.add_argument("--savedir", type=str)
+
+    args = parser.parse_args()
+
+    save_dir = args.savedir
+    data_dir = args.datadir
+
+    # properties of mouse and session selected
     mice_channels = {
         "Mouse28": {"PoS": [1, 2, 3, 4, 5, 6, 7], "ANT": [8, 9, 10, 11]},
     }
-
     mice_sessions = {"Mouse28": ["140313"]}
-
-    # Mice sleep/wake exploration, head direction cells
     phase = "wake"
 
     for mouse_id in mice_sessions.keys():
@@ -403,13 +414,6 @@ def main():
             ]  # pick wake session
             savef = save_dir + "th1_{}_{}_{}.p".format(mouse_id, session_id, phase)
             d = data_class.load_preprocess_save(None, time_limits)
-
-    pprint(periods, indent=2, sort_dicts=False)
-
-    time_limits = [
-        periods["wake"][0]["start"],
-        periods["wake"][0]["end"],
-    ]  # pick wake session
 
 
 if __name__ == "__main__":
