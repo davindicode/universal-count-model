@@ -23,17 +23,15 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
     pick_neurons = list(range(neurons))
     
     ### statistics over the behaviour ###
+    MC = 100
     x_counts = np.arange(max_count + 1)
-    
-    avg_models, var_models, FF_models = [], [], []
-    
     kcv = 2
-    bn = 40
-
+    
+    avg_binnings, var_binnings, FF_binnings = [], [], []
     for name in config_names:
         config_name = name + str(kcv)
 
-        full_model, _, _, val_dict = models.load_model(
+        full_model, _, _, _ = models.load_model(
             config_name,
             checkpoint_dir,
             dataset_dict,
@@ -43,10 +41,21 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
 
         avg_model, var_model, ff_model = [], [], []
         with torch.no_grad():
-            for b in range(full_model.inputs.batches):
-                P_mc = nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping, full_model.likelihood, pick_neurons, None, cov_samples=10, ll_samples=1, tr=0
-                ).cpu().numpy()
+            for batch in range(full_model.input_group.batches):
+                covariates, _ = full_model.input_group.sample_XZ(batch, samples=1)
+
+                P_mc = (
+                    nprb.utils.model.compute_UCM_P_count(
+                        full_model.mapping,
+                        full_model.likelihood,
+                        covariates,
+                        pick_neurons,
+                        MC=MC,
+                    )
+                    .mean(0)
+                    .cpu()
+                    .numpy()
+                )  # count probabilities of shape (neurons, timesteps, count)
 
                 avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
                 var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
@@ -56,17 +65,15 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
                 var_model.append(var)
                 ff_model.append(ff)
 
-            avg_binnings.append(np.concatenate(avg_model, axis=-1).mean(0))
-            var_binnings.append(np.concatenate(var_model, axis=-1).mean(0))
-            FF_binnings.append(np.concatenate(ff_model, axis=-1).mean(0))
+        avg_binnings.append(np.concatenate(avg_model, axis=-1).mean(0))
+        var_binnings.append(np.concatenate(var_model, axis=-1).mean(0))
+        FF_binnings.append(np.concatenate(ff_model, axis=-1).mean(0))
 
-    Pearson_avg_FF = []
-    ratio_avg_FF = []
-
-    for d in range(len(avg_models)):
+    Pearson_avg_FF, ratio_avg_FF = [], []
+    for d in range(len(avg_binnings)):  # iterate over models
         Pearson = []
         ratio = []
-        for avg, ff in zip(avg_models[d], FF_models[d]):
+        for avg, ff in zip(avg_binnings[d], FF_binnings[d]):
             r, r_p = scstats.pearsonr(ff, avg)  # Pearson r correlation test
             Pearson.append((r, r_p))
             ratio.append(ff.std() / avg.std())
@@ -75,9 +82,9 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
         ratio_avg_FF.append(ratio)
 
     variability_dict = {
-        "avg_models": avg_models,
-        "var_models": var_models,
-        "FF_models": FF_models,
+        "avg_binnings": avg_binnings,
+        "var_binnings": var_binnings,
+        "FF_binnings": FF_binnings,
         "Pearson_avg_FF": Pearson_avg_FF,
         "ratio_avg_FF": ratio_avg_FF,
     }
@@ -110,9 +117,9 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
 
             batches = full_model.likelihood.batches
 
-            elbo_ = []
+            elbo = []
             for b in range(batches):
-                elbo_.append(
+                elbo.append(
                     full_model.objective(
                         b,
                         cov_samples=1,
@@ -125,7 +132,7 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
                     .data.cpu()
                     .numpy()
                 )
-            ELBO.append(np.array(elbo_).mean())
+            ELBO.append(np.array(elbo).mean())
 
     ELBO = np.array(ELBO).reshape(len(config_names), len(kcvs))
 
@@ -207,10 +214,21 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
 
 
 def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
-    # load model
+    tbin = dataset_dict["tbin"]
+    max_count = dataset_dict["max_count"]
+    neurons = dataset_dict["neurons"]
+    pick_neurons = list(range(neurons))
+    
+    x_counts = torch.arange(max_count + 1)
+
+    covariates = dataset_dict["covariates"]
+    TT = tbin * dataset_dict["timesamples"]
+    
+    
+    ### load model ###
     config_name = model_name
 
-    full_model, training_loss, fit_dict, val_dict = models.load_model(
+    full_model, training_loss, fit_dict, _ = models.load_model(
         config_name,
         checkpoint_dir,
         dataset_dict,
@@ -219,83 +237,64 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     )
 
     # latents
-    X_loc, X_std = full_model.input_group.input_1.variational.eval_moments(0, ts)
+    X_loc, X_std = full_model.input_group.input_6.variational.eval_moments(0, ts)
     X_loc = X_loc.data.cpu().numpy()[:, 0]
     X_std = X_std.data.cpu().numpy()[:, 0]
 
-    X_c = X_loc[6]
-    X_s = X_std[6]
-    z_tau = tbin / (1 - torch.sigmoid(full_model.input_group.p_mu_6).data.cpu().numpy())
+    X_c = X_loc
+    X_s = X_std
+    z_tau = tbin / (1 - torch.sigmoid(full_model.input_group.input_6.prior.mu).data.cpu().numpy())
 
     t_lengths = (
         full_model.mapping.kernel.kern1.lengthscale[:, 0, 0, -3].data.cpu().numpy()
     )
 
-    # covariates
+    ### covariates ###
+    
     # compute timescales for input dimensions from ACG
     delays = 5000
     Tsteps = rcov[0].shape[0]
     L = Tsteps - delays + 1
-    acg_rc = []
+    acg_rc = {}
 
-    for rc in rcov[:1]:  # angular
-        acg = np.empty(delays)
-        for d in range(delays):
-            A = rc[d : d + L]
-            B = rc[:L]
-            acg[d] = utils.stats.corr_circ_circ(A, B)
-        acg_rc.append(acg)
+    for name, cov in covariates.items():
+        if name == 'hd':  # angular
+            acg = np.empty(delays)
+            for d in range(delays):
+                A = rc[d : d + L]
+                B = rc[:L]
+                acg[d] = utils.stats.corr_circ_circ(A, B)
+        else:
+            acg = np.empty(delays)
+            for d in range(delays):
+                A = rc[d : d + L]
+                B = rc[:L]
+                acg[d] = ((A - A.mean()) * (B - B.mean())).mean() / A.std() / B.std()
 
-    for rc in rcov[1:-1]:
+        acg_rc[name] = acg
+
+    for en, rc in enumerate(X_c.T):
         acg = np.empty(delays)
         for d in range(delays):
             A = rc[d : d + L]
             B = rc[:L]
             acg[d] = ((A - A.mean()) * (B - B.mean())).mean() / A.std() / B.std()
-        acg_rc.append(acg)
+        
+        acg_rc['z_{}'.format(en+1)] = acg
 
-    acg_z = []
-    for rc in X_c.T:
-        acg = np.empty(delays)
-        for d in range(delays):
-            A = rc[d : d + L]
-            B = rc[:L]
-            acg[d] = ((A - A.mean()) * (B - B.mean())).mean() / A.std() / B.std()
-        acg_z.append(acg)
+    timescales = {}
+    for name, acg in acg_rc.items():
+        timescales[name] = np.where(acg < np.exp(-1))[0][0] * tbin
 
-    timescales = []
-
-    for d in range(len(rcov) - 1):
-        timescales.append(np.where(acg_rc[d] < np.exp(-1))[0][0] * tbin)
-
-    for d in range(X_c.shape[-1]):
-        timescales.append(np.where(acg_z[d] < np.exp(-1))[0][0] * tbin)
 
     covariates_dict = {
         "X_mu": X_c,
         "X_std": X_s,
-        "z_tau": z_tau,
+        "z_tau": z_tau, 
+        "t_lengths": t_lengths,
         "timescales": timescales,
         "acg_rc": acg_rc,
-        "acg_z": acg_z,
-        "t_lengths": t_lengths,
     }
-
-    # load regression model with most input dimensions
-    mode = modes[4]
-    cvdata = model_utils.get_cv_sets(mode, [-1], 5000, rc_t, resamples, rcov)[0]
-    full_model = get_full_model(
-        session_id,
-        phase,
-        cvdata,
-        resamples,
-        40,
-        mode,
-        rcov,
-        max_count,
-        neurons,
-        gpu=gpu_dev,
-    )
 
     ### head direction tuning ###
     MC = 100
@@ -312,35 +311,44 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         0.0 * np.ones(steps),
     ]
 
-    P_mc = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=MC).cpu()
+    with torch.no_grad():
+        P_mc = nprb.utils.model.compute_UCM_P_count(
+            full_model.mapping, 
+            full_model.likelihood, 
+            [torch.from_numpy(c) for c in fit_dict['covariates']], 
+            pick_neurons, 
+            MC=MC, 
+        ).cpu()
 
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1).mean(0).numpy()
     pref_hd = covariates[0][np.argmax(avg, axis=1)]
 
     # marginalized tuning curves
     rcovz = list(rcov) + [X_c[:, 0], X_c[:, 1]]
-    MC = 10
+    MC = 100
     skip = 10
 
     ### TI to latent space ###
     step = 100
-    P_tot = model_utils.marginalized_P(
-        full_model,
-        [np.linspace(-0.2, 0.2, step)],
-        [6],
-        rcovz,
-        10000,
-        pick_neurons,
-        MC=MC,
-        skip=skip,
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
+            full_model.mapping,
+            full_model.likelihood,
+            [torch.linspace(-0.2, 0.2, step)],
+            [6],
+            [torch.from_numpy(c) for c in fit_dict['covariates']],
+            batch_size,
+            pick_neurons,
+            MC=MC,
+            sample_skip=skip,
+        ).cpu()
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
 
     marg_z1_avg = avg.mean(0)
     marg_z1_FF = ff.mean(0)
+    
     z1_avg_tf = (mz1_mean.max(dim=-1)[0] - mz1_mean.min(dim=-1)[0]) / (
         mz1_mean.max(dim=-1)[0] + mz1_mean.min(dim=-1)[0]
     )
@@ -349,22 +357,25 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     )
 
     step = 100
-    P_tot = nprb.utils.model.marginalized_UCM_P_count(
-        full_model,
-        [np.linspace(-0.2, 0.2, step)],
-        [7],
-        rcovz,
-        10000,
-        pick_neurons,
-        MC=MC,
-        skip=skip,
-    )
+    with torch.no_grad():
+        P_tot = nprb.utils.model.marginalized_UCM_P_count(
+            full_model.mapping,
+            full_model.likelihood,
+            [torch.linspace(-0.2, 0.2, step)],
+            [7],
+            [torch.from_numpy(c) for c in fit_dict['covariates']],
+            batch_size,
+            pick_neurons,
+            MC=MC,
+            sample_skip=skip,
+        ).cpu()
     avg = (x_counts[None, None, None, :] * P_tot).sum(-1)
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
 
     marg_z2_avg = avg.mean(0)
     marg_z2_FF = ff.mean(0)
+    
     z2_avg_tf = (mz2_mean.max(dim=-1)[0] - mz2_mean.min(dim=-1)[0]) / (
         mz2_mean.max(dim=-1)[0] + mz2_mean.min(dim=-1)[0]
     )
@@ -408,9 +419,12 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         with torch.no_grad():
             P_mean = (
                 nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping, full_model.likelihood, covariates, [n], MC=100)
-                .mean(0)
-                .cpu()
+                    full_model.mapping, 
+                    full_model.likelihood, 
+                    covariates, 
+                    [n], 
+                    MC=MC, 
+                ).mean(0).cpu()
             )
         avg = (x_counts[None, :] * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
         var = (x_counts[None, :] ** 2 * P_mean[0, ...]).sum(-1).reshape(A, B).numpy()
@@ -460,8 +474,9 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                     P = nprb.utils.model.compute_UCM_P_count(
                         full_model.mapping, 
                         full_model.likelihood, 
+                        
                         pick_neurons, 
-                        MC=10, 
+                        MC=MC, 
                     ).mean(0).cpu().numpy()
 
                 for n in range(N):

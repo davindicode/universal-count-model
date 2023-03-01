@@ -27,7 +27,6 @@ def regression(
     pick_neurons = list(range(neurons))
 
     x_counts = torch.arange(max_count + 1)
-    HD_offset = -1.0  # global shift makes plots look better
 
     ### cross validation ###
     kcvs = [1, 2, 3, 5, 6, 8]  # validation segments from splitting data into 10
@@ -644,7 +643,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     ]
 
     with torch.no_grad():
-        P_mean = nprb.utils.compute_UCM_P_count(
+        P_mean = nprb.utils.model.compute_UCM_P_count(
             full_model.mapping,
             full_model.likelihood, 
             [torch.from_numpy(c) for c in covariates], 
@@ -705,6 +704,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     MC = 300
     smooth_length=5
     smooth_kernel = np.ones(smooth_length) / smooth_length
+    HD_offset = -1.0  # global shift makes plots look better
 
     # head direction tuning
     steps = 100
@@ -719,13 +719,14 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         0.0 * np.ones(steps),
     ]
 
-    P_mc = utils.compute_UCM_P_count(
-        full_model.mapping,
-        full_model.likelihood, 
-        [torch.from_numpy(c) for c in covariates], 
-        pick_neurons, 
-        MC=MC, 
-    ).cpu()
+    with torch.no_grad():
+        P_mc = nprb.utils.model.compute_UCM_P_count(
+            full_model.mapping,
+            full_model.likelihood, 
+            [torch.from_numpy(c) for c in covariates], 
+            pick_neurons, 
+            MC=MC, 
+        ).cpu()
 
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
     xcvar = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
@@ -742,12 +743,11 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     ]
 
     # omega tuning
-    avg_omega_percentiles = []
-    FF_omega_percentiles = []
-
     steps = 100
     w_edge = (-omega_t.min() + omega_t.max()) / 2.0
     eval_omega = np.linspace(-w_edge, w_edge, steps)
+    
+    avg, ff = [], []
     for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
@@ -758,40 +758,36 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             0.0 * np.ones(steps),
         ]
 
-        P_mc = utils.compute_UCM_P_count(
-            full_model.mapping,
-            full_model.likelihood, 
-            [torch.from_numpy(c) for c in covariates], 
-            [n], 
-            MC=MC, 
-        )[:, 0, ...].cpu()
+        with torch.no_grad():
+            P_mc = nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping,
+                full_model.likelihood, 
+                [torch.from_numpy(c) for c in covariates], 
+                [n], 
+                MC=MC, 
+            )[:, 0, ...].cpu()
 
-        avg = (x_counts[None, None, :] * P_mc).sum(-1)
+        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
         xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff = xcvar / avg
+        ff.append(xcvar / avg)
+        
+    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
 
-        avg_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
-        ]
+    avg_omega_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
+    ]
 
-        FF_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
-        ]
-
-        avg_omega_percentiles.append(avg_percentiles)
-        FF_omega_percentiles.append(FF_percentiles)
-
-    avg_omega_percentiles = [np.stack([p[k] for p in avg_omega_percentiles], axis=0) for k in range(3)]
-    FF_omega_percentiles = [np.stack([p[k] for p in FF_omega_percentiles], axis=0) for k in range(3)]
+    FF_omega_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
+    ]
         
     # speed tuning
-    avg_speed_percentiles = []
-    FF_speed_percentiles = []
-
     steps = 100
     eval_speed = np.linspace(0, 30.0, steps)
+    
+    avg, ff = [], []
     for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
@@ -802,40 +798,37 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             0.0 * np.ones(steps),
         ]
 
-        P_mc = utils.compute_UCM_P_count(
-            full_model.mapping,
-            full_model.likelihood, 
-            [torch.from_numpy(c) for c in covariates], 
-            [n], 
-            MC=MC, 
-        )[:, 0, ...].cpu()
+        with torch.no_grad():
+            P_mc = nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping,
+                full_model.likelihood, 
+                [torch.from_numpy(c) for c in covariates], 
+                [n], 
+                MC=MC, 
+            )[:, 0, ...].cpu()
 
-        avg = (x_counts[None, None, :] * P_mc).sum(-1)
+        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
         xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff = xcvar / avg
-
-        avg_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
-        ]
+        ff.append(xcvar / avg)
         
-        FF_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
-        ]
+    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
 
-        avg_speed_percentiles.append(avg_percentiles)
-        FF_speed_percentiles.append(FF_percentiles)
+    avg_speed_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
+    ]
 
-    avg_speed_percentiles = [np.stack([p[k] for p in avg_speed_percentiles], axis=0) for k in range(3)]
-    FF_speed_percentiles = [np.stack([p[k] for p in FF_speed_percentiles], axis=0) for k in range(3)]
-        
+    FF_speed_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
+    ]
+
+    
     # time tuning
-    avg_time_percentiles = []
-    FF_time_percentiles = []
-
     steps = 100
     eval_time = np.linspace(0, TT, steps)
+    
+    avg, ff = [], []
     for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd_omega[en, len(w_arr) // 2] * np.ones(steps),
@@ -846,33 +839,30 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             eval_time,
         ]
 
-        P_mc = utils.compute_UCM_P_count(
-            full_model.mapping,
-            full_model.likelihood, 
-            [torch.from_numpy(c) for c in covariates], 
-            [n], 
-            MC=MC, 
-        )[:, 0, ...].cpu()
+        with torch.no_grad():
+            P_mc = nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping,
+                full_model.likelihood, 
+                [torch.from_numpy(c) for c in covariates], 
+                [n], 
+                MC=MC, 
+            )[:, 0, ...].cpu()
 
-        avg = (x_counts[None, None, :] * P_mc).sum(-1)
+        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
         xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff = xcvar / avg
-
-        avg_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
-        ]
+        ff.append(xcvar / avg)
         
-        FF_percentiles = [
-            nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
-            for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
-        ]
+    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
 
-        avg_time_percentiles.append(avg_percentiles)
-        FF_time_percentiles.append(FF_percentiles)
-        
-    avg_time_percentiles = [np.stack([p[k] for p in avg_time_percentiles], axis=0) for k in range(3)]
-    FF_time_percentiles = [np.stack([p[k] for p in FF_time_percentiles], axis=0) for k in range(3)]
+    avg_time_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
+    ]
+
+    FF_time_percentiles = [
+        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
+    ]
 
     # position tuning
     grid_shape_pos = [[left_x, right_x], [bottom_y, top_y]]
@@ -895,14 +885,15 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             np.linspace(bottom_y, top_y, B)[None, :].repeat(A, axis=0).flatten(),
             t * np.ones(steps),
         ]
-
-        P_mc = utils.compute_UCM_P_count(
-            full_model.mapping,
-            full_model.likelihood, 
-            [torch.from_numpy(c) for c in covariates], 
-            [n], 
-            MC=MC, 
-        )[:, 0, ...].cpu()
+        
+        with torch.no_grad():
+            P_mc = nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping,
+                full_model.likelihood, 
+                [torch.from_numpy(c) for c in covariates], 
+                [n], 
+                MC=MC, 
+            )[:, 0, ...].cpu()
         avg = (x_counts[None, None, :] * P_mc).sum(-1).reshape(-1, A, B).numpy()
         var = (x_counts[None, None, :] ** 2 * P_mc).sum(-1).reshape(-1, A, B).numpy()
         xcvar = var - avg**2

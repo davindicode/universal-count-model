@@ -45,6 +45,13 @@ def metric(x, y, topology="euclid"):
     return xy
 
 
+def resultant_length(x, y):
+    """
+    Returns the mean resultant length R of the residual distribution
+    """
+    return torch.sqrt(torch.mean(torch.cos(x-y))**2 + torch.mean(torch.sin(x-y))**2)
+
+
 def signed_scaled_shift(
     x, x_ref, device="cpu", topology="ring", iters=1000, lr=1e-2, learn_scale=True
 ):

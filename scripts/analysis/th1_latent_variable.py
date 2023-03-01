@@ -176,10 +176,10 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
             )
             delay_RMS.append(Dd.mean().item())
 
-    delay_RMS = np.array(delay_RMS).reshape(len(delays), len(CV))
+    delay_RMS = np.array(delay_RMS).reshape(len(delays), len(kcvs))
 
     # get the latent inferred trajectory of UCM
-    drift, sign, shift, _ = circ_drift_regression(
+    drift, sign, shift, _ = utils.circ_drift_regression(
         gt_hd[fit_range],
         X_loc[fit_range],
         fit_range * tbin,
