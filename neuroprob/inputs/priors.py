@@ -24,6 +24,12 @@ class IndNormal(_prior):
         learn_mu=False,
         learn_std=False,
     ):
+        """
+        :param torch.Tensor mu: variational means of shape (ts, [dims])
+        :param torch.Tensor std: variational stds of shape (ts, [dims])
+        :param str topo: topology of input space ('euclid' or 'ring')
+        :param int dims: number of input dimensions
+        """
         super().__init__(0, tensor_type, dims)
         self.topo = topo
         self.lf = lambda x: F.softplus(x)
@@ -69,6 +75,10 @@ class IndUniform(_prior):
     """
 
     def __init__(self, topo, dims, tensor_type=torch.float):
+        """
+        :param str topo: topology of input space ('euclid' or 'ring')
+        :param int dims: number of input dimensions
+        """
         super().__init__(0, tensor_type, dims)
         self.topo = topo
 
@@ -107,6 +117,11 @@ class ARNormal(_prior):
     """
 
     def __init__(self, transition, topo, dims, p, tensor_type=torch.float):
+        """
+        :param nn.Module transition: class that returns the AR model parameters
+        :param str topo: topology of input space ('euclid' or 'ring')
+        :param int dims: number of input dimensions
+        """
         super().__init__(p, tensor_type, dims)
         self.topo = topo
 
@@ -145,13 +160,21 @@ class ARNormal(_prior):
 
 class AR1(ARNormal):
     """
-    Stationary AR(1)
+    Stationary AR(1) process:
+        z_{t+1} = loc * z_{t-1} + std * w_t
+        
     """
 
     def __init__(
         self, loc, std, dims, learn_loc=False, learn_std=True, tensor_type=torch.float
     ):
-        class transition_(nn.Module):
+        """
+        :param torch.Tensor mu: variational means of shape (ts, [dims])
+        :param torch.Tensor std: variational stds of shape (ts, [dims])
+        :param int dims: number of input dimensions
+        """
+        
+        class _transition(nn.Module):
             def __init__(self, loc, std, learn_loc, learn_std, tensor_type):
                 super().__init__()
                 self.lf = lambda x: F.softplus(x)
@@ -177,7 +200,7 @@ class AR1(ARNormal):
                 std_ = std * torch.sqrt(1 - loc**2)
                 return loc * x, std_
 
-        transition = transition_(loc, std, learn_loc, learn_std, tensor_type)
+        transition = _transition(loc, std, learn_loc, learn_std, tensor_type)
         super().__init__(transition, "euclid", dims, 1, tensor_type)
 
     def ini_pd(self, ini_x):
@@ -188,27 +211,11 @@ class AR1(ARNormal):
         return prior_term
 
 
-class ARp(ARNormal):
+class tangent_ring_AR1(ARNormal):
     """
-    Euclidean:
-        z_t = sum_{k=1}^p loc_k * z_{t-k} + std * w_t
-    """
-
-    def __init__(
-        self, loc, std, learn_loc=False, learn_std=True, tensor_type=torch.float
-    ):
-        super().__init__(transition, "euclid", dims, p, tensor_type)
-
-
-class tAR1(ARNormal):
-    """
-    ring (define on tangent space):
-        Delta(z_t) = z_{t+1} - z_t = sum_{k=1}^{p-1} loc_k * Delta(z_{t-k}) + std*w_t
-
-    if self.topo == 'euclid': # stationary linear
-        rd = self.rw_dist(loc, std)
-    elif self.topo == 'ring': # drift DS
-        rd = self.rw_dist(loc, std)
+    AR(1) process on ring (define on tangent space):
+        Delta(z_t) = z_{t+1} - z_t = loc * Delta(z_{t-1}) + std * w_t
+        
     """
 
     def __init__(
@@ -220,7 +227,13 @@ class tAR1(ARNormal):
         learn_std=True,
         tensor_type=torch.float,
     ):
-        class transition_(nn.Module):
+        """
+        :param torch.Tensor mu: variational means of shape (ts, [dims])
+        :param torch.Tensor std: variational stds of shape (ts, [dims])
+        :param int dims: number of input dimensions
+        """
+        
+        class _transition(nn.Module):
             def __init__(self, loc, std, learn_loc, learn_std, tensor_type):
                 super().__init__()
                 self.lf = lambda x: F.softplus(x)
@@ -244,7 +257,7 @@ class tAR1(ARNormal):
                 std = self.lf(self.finv_std)
                 return x + self.loc, std
 
-        transition = transition_(loc, std, learn_loc, learn_std, tensor_type)
+        transition = _transition(loc, std, learn_loc, learn_std, tensor_type)
         super().__init__(transition, "ring", dims, 1, tensor_type)
 
         self.prior_dist = dist.Tn_Uniform

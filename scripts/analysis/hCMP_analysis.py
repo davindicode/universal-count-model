@@ -54,7 +54,7 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
     RG_cv_ll = np.array(RG_cv_ll).reshape(len(config_names), len(kcvs))
 
     ### tuning curves of ground truth model ###
-    hd = gt_hCMP["covariates"][:, 0]
+    hd = gt_hCMP["gt_covariates"][:, 0]
 
     gt_lamb = gt_hCMP["gt_lamb"]
     gt_nu = gt_hCMP["gt_nu"]
@@ -246,7 +246,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
                 sign_KS,
                 p_DS,
                 p_KS,
-            ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05, alpha_s=0.05)
+            ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05)
             T_DS.append(T_DS_)
             T_KS.append(T_KS_)
 

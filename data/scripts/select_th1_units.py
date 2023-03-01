@@ -110,7 +110,7 @@ def main():
             sigma = 6
             sfilter = np.exp(-0.5 * (np.arange(filter_win) - centre_win) ** 2 / sigma**2)
             sfilter = sfilter / sfilter.sum()
-            sm_tun = utils.stats.smooth_hist(hd_rate, sfilter, ["periodic"])
+            sm_tun = utils.stats.smooth_histogram(hd_rate, sfilter, ["periodic"])
             coherence, sparsity = utils.neural.geometric_tuning(hd_rate, sm_tun, hd_prob)
 
             # select cells based on criterion

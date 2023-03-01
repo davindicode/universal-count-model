@@ -44,8 +44,8 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
     :param float tbin: time bin size
     :param float eps: order of magnitude of P(N>1)/P(N<2) per dilated Bernoulli bin
     :param int max_count: maximum number of spike counts per bin possible
-    :returns: inhomogeneous Poisson process sample
-    :rtype: numpy.array
+    :returns:
+        inhomogeneous Poisson process sample np.ndarray
     """
     trials = lamb.shape[0]
     neurons = lamb.shape[1]
@@ -190,8 +190,8 @@ class _count_model(base._likelihood):
 
         :param int samples: number of MC samples or GH points (exact will ignore and give 1)
 
-        :returns: negative likelihood term of shape (samples, timesteps), sample weights (samples, 1
-        :rtype: tuple of torch.tensors
+        :returns:
+            negative likelihood term of shape (samples, timesteps), sample weights (samples, 1)
         """
         if mode == "MC":
             h = base.mc_gen(F_mu, F_var, samples, neuron)  # h has only observed neurons
@@ -261,8 +261,8 @@ class Bernoulli(_count_model):
         Takes into account the quantization bias if we sample IPP with dilation factor.
 
         :param numpy.array rate: input rate of shape (trials, neuron, timestep)
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()
@@ -339,8 +339,8 @@ class Poisson(_count_model):
         Takes into account the quantization bias if we sample IPP with dilation factor.
 
         :param numpy.array rate: input rate of shape (trials, neuron, timestep)
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()
@@ -413,8 +413,8 @@ class ZI_Poisson(_count_model):
         Sample from ZIP process.
 
         :param numpy.array rate: input rate of shape (trials, neuron, timestep)
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()
@@ -563,8 +563,8 @@ class Negative_binomial(_count_model):
 
         :param numpy.array rate: input rate of shape (trials, neuron, timestep)
         :param int max_count: maximum number of spike counts per time bin
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()
@@ -671,8 +671,8 @@ class COM_Poisson(_count_model):
 
         :param torch.Tensor lambd: lambda of shape (samples, neurons, timesteps)
         :param torch.Tensor nu: nu of shape (samples, neurons, timesteps)
-        :returns: log Z of shape (samples, neurons, timesteps)
-        :rtype: torch.tensor
+        :returns:
+            log Z of shape (samples, neurons, timesteps)
         """
         # indx = torch.where((self.powers*lambd.max() - nu_.min()*self.j) < -1e1) # adaptive
         # if len(indx) == 0:
@@ -692,8 +692,8 @@ class COM_Poisson(_count_model):
         :param list neuron: list of neuron indices to evaluate
         :param torch.Tensor disper_param: input for heteroscedastic NB likelihood of shape (trial, neuron, time),
                                           otherwise uses fixed :math:`\nu`
-        :returns: NLL of shape (trial, time)
-        :rtype: torch.tensor
+        :returns:
+            NLL of shape (trial, time)
         """
         if disper_param is None:
             nu = torch.exp(self.log_nu).expand(1, self.neurons)[:, neuron, None]
@@ -713,8 +713,8 @@ class COM_Poisson(_count_model):
         Sample from the CMP distribution.
 
         :param numpy.array rate: input rate of shape (neuron, timestep)
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()
@@ -865,10 +865,10 @@ class Universal(base._likelihood):
         Convert one-hot vector representation of counts. Assumes the event dimension is the last.
 
         :param torch.Tensor onehot: one-hot vector representation of shape (..., event)
-        :returns: spike counts
-        :rtype: torch.tensor
+        :returns:
+            spike counts
         """
-        counts = torch.zeros(*onehot.shape[:-1], device=onehot.device)
+        counts = torch.zeros(*onehot.shape[:-1], device=self.tbin.device)
         inds = torch.where(onehot)
         counts[inds[:-1]] = inds[-1].float()
         return counts
@@ -879,11 +879,11 @@ class Universal(base._likelihood):
 
         :param torch.Tensor counts: spike counts of some tensor shape
         :param int max_counts: size of the event dimension (max_counts + 1)
-        :returns: one-hot representation of shape (*counts.shape, event)
-        :rtype: torch.tensor
+        :returns:
+            one-hot representation of shape (*counts.shape, event)
         """
         km = self.K + 1
-        onehot = torch.zeros(*counts.shape, km, device=counts.device)
+        onehot = torch.zeros(*counts.shape, km, device=self.tbin.device)
         onehot_ = onehot.view(-1, km)
         g = onehot_.shape[0]
         onehot_[np.arange(g), counts.flatten()[np.arange(g)].long()] = 1
@@ -940,8 +940,8 @@ class Universal(base._likelihood):
         Compute count probabilities from the rate model output.
 
         :param torch.Tensor F_mu: the F_mu product output of the rate model (samples and/or trials, F_dims, time)
-        :returns: log probability tensor
-        :rtype: tensor of shape (samples and/or trials, n, t, c)
+        :returns:
+            log probability tensor of shape (samples and/or trials, n, t, c)
         """
         T = F_mu.shape[-1]
         samples = F_mu.shape[0]
@@ -1035,8 +1035,8 @@ class Universal(base._likelihood):
 
         :param numpy.array log_probs: log count probabilities (trials, neuron, timestep, counts), no
                                       need to be normalized
-        :returns: spike train of shape (trials, neuron, timesteps)
-        :rtype: np.array
+        :returns:
+            spike train np.ndarray of shape (trials, neuron, timesteps)
         """
         if rng is None:
             rng = np.random.default_rng()

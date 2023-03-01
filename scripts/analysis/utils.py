@@ -125,7 +125,7 @@ def circ_drift_regression(x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_f
         for k in iterator:
             optimizer.zero_grad()
             Z_ = t * a_fac * a + shift + sign * Z
-            loss = (utils.latent.metric(Z_, X, topology) ** 2).mean()
+            loss = (metric(Z_, X, topology) ** 2).mean()
             loss.backward()
             optimizer.step()
 
@@ -140,5 +140,5 @@ def circ_drift_regression(x, z, t, topology, dev="cpu", iters=1000, lr=1e-2, a_f
             sign_ = sign
             losses_ = losses
 
-    aligned = a_fac * a_, sign_
-    return aligned, shift_, losses_
+    aligned = a_fac * a_  # aligned trajectory
+    return aligned, sign_, shift_, losses_

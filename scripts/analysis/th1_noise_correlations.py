@@ -8,11 +8,13 @@ import numpy as np
 import scipy.stats as scstats
 import torch
 
-sys.path.append("..")  # access to library
+sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
-sys.path.append("../scripts")  # access to scripts
+sys.path.append("..")  # access to scripts
 import models
+
+import utils
 
 
 def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, device):
@@ -20,8 +22,10 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
     pick_neurons = list(range(neurons))
-
+    
     ### statistics over the behaviour ###
+    x_counts = np.arange(max_count + 1)
+    
     avg_models, var_models, FF_models = [], [], []
     
     kcv = 2
@@ -30,49 +34,33 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
     for name in config_names:
         config_name = name + str(kcv)
 
-        rcov, neurons, tbin, resamples, rc_t, region_edge = HDC.get_dataset(
-            session_id, phase, bn, "../scripts/data"
-        )
-        max_count = int(rc_t.max())
-        x_counts = torch.arange(max_count + 1)
-
-        cvdata = model_utils.get_cv_sets(
-            mode, [kcv], batch_size, rc_t, resamples, rcov
-        )[0]
-        full_model = get_full_model(
-            session_id,
-            phase,
-            cvdata,
-            resamples,
-            bn,
-            mode,
-            rcov,
-            max_count,
-            neurons,
-            gpu=gpu_dev,
+        full_model, _, _, val_dict = models.load_model(
+            config_name,
+            checkpoint_dir,
+            dataset_dict,
+            batch_info,
+            device,
         )
 
-        avg_model = []
-        var_model = []
-        ff_model = []
+        avg_model, var_model, ff_model = [], [], []
+        with torch.no_grad():
+            for b in range(full_model.inputs.batches):
+                P_mc = nprb.utils.model.compute_UCM_P_count(
+                    full_model.mapping, full_model.likelihood, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
+                ).cpu().numpy()
 
-        for b in range(full_model.inputs.batches):
-            P_mc = model_utils.compute_pred_P(
-                full_model, b, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
-            ).cpu()
+                avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
+                var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
+                ff = var / (avg + 1e-12)
+                
+                avg_model.append(avg)
+                var_model.append(var)
+                ff_model.append(ff)
 
-            avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
-            var = (x_counts[None, None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-            ff = var / (avg + 1e-12)
-            avg_model.append(avg)
-            var_model.append(var)
-            ff_model.append(ff)
+            avg_binnings.append(np.concatenate(avg_model, axis=-1).mean(0))
+            var_binnings.append(np.concatenate(var_model, axis=-1).mean(0))
+            FF_binnings.append(np.concatenate(ff_model, axis=-1).mean(0))
 
-        avg_models.append(torch.cat(avg_model, dim=-1).mean(0).numpy())
-        var_models.append(torch.cat(var_model, dim=-1).mean(0).numpy())
-        FF_models.append(torch.cat(ff_model, dim=-1).mean(0).numpy())
-
-    b = 1
     Pearson_avg_FF = []
     ratio_avg_FF = []
 
@@ -238,7 +226,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     X_c = X_loc[6]
     X_s = X_std[6]
-    z_tau = tbin / (1 - torch.sigmoid(full_model.inputs.p_mu_6).data.cpu().numpy())
+    z_tau = tbin / (1 - torch.sigmoid(full_model.input_group.p_mu_6).data.cpu().numpy())
 
     t_lengths = (
         full_model.mapping.kernel.kern1.lengthscale[:, 0, 0, -3].data.cpu().numpy()
@@ -325,7 +313,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         0.0 * np.ones(steps),
     ]
 
-    P_mc = model_utils.compute_P(full_model, covariates, pick_neuron, MC=MC).cpu()
+    P_mc = nprb.utils.model.compute_UCM_P_count(
+        full_model.mapping, full_model.likelihood, covariates, pick_neuron, MC=MC).cpu()
 
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1).mean(0).numpy()
     pref_hd = covariates[0][np.argmax(avg, axis=1)]
@@ -361,7 +350,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     )
 
     step = 100
-    P_tot = utils.marginalized_UCM_P_count(
+    P_tot = nprb.utils.model.marginalized_UCM_P_count(
         full_model,
         [np.linspace(-0.2, 0.2, step)],
         [7],
@@ -419,7 +408,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
         with torch.no_grad():
             P_mean = (
-                nprb.utils.model.compute_UCM_P_count(full_model, covariates, [n], MC=100)
+                nprb.utils.model.compute_UCM_P_count(
+                    full_model.mapping, full_model.likelihood, covariates, [n], MC=100)
                 .mean(0)
                 .cpu()
             )
@@ -467,8 +457,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             q_ = []
             Z_ = []
             for b in range(full_model.inputs.batches):  # predictive posterior
-                P_mc = model_utils.compute_pred_P(
-                    full_model, b, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
+                P_mc = nprb.utils.model.compute_UCM_P_count(
+                    full_model.mapping, full_model.likelihood, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
                 )
                 P = P_mc.mean(0).cpu().numpy()
 
@@ -510,7 +500,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     for q in Qq:
         for qq in q:
             T_DS_, T_KS_, sign_DS, sign_KS, p_DS, p_KS = utils.stats.KS_DS_statistics(
-                qq, alpha=0.05, alpha_s=0.05
+                qq, alpha=0.05, 
             )
             T_DS.append(T_DS_)
             T_KS.append(T_KS_)
@@ -536,7 +526,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     for q in fisher_q:
         for qq in q:
             _, T_KS, _, _, _, p_KS = utils.stats.KS_DS_statistics(
-                qq, alpha=0.05, alpha_s=0.05
+                qq, alpha=0.05, 
             )
             T_KS_fishq.append(T_KS)
             p_KS_fishq.append(p_KS)
@@ -550,7 +540,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         for qq in q:
             for qqq in qq:
                 _, T_KS, _, _, _, p_KS = utils.stats.KS_DS_statistics(
-                    qqq, alpha=0.05, alpha_s=0.05
+                    qqq, alpha=0.05, 
                 )
                 T_KS_ks.append(T_KS)
                 p_KS_ks.append(p_KS)
@@ -642,6 +632,8 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+        
+    batch_info = args.batch_size
 
     ### names ###
     nc_config_names = [
@@ -664,12 +656,14 @@ def main():
 
     ### analysis ###
     variability_dict = variability_stats(
-        checkpoint_dir, nc_config_names, dataset_dict, device
+        checkpoint_dir, nc_config_names, dataset_dict, batch_info, device
     )
     noisecorr_dict = noise_correlations(
-        checkpoint_dir, nc_config_names, dataset_dict, device
+        checkpoint_dir, nc_config_names, dataset_dict, batch_info, device
     )
-    bestmodel_dict = best_model(checkpoint_dir, best_name, dataset_dict, device)
+    bestmodel_dict = best_model(
+        checkpoint_dir, best_name, dataset_dict, batch_info, device
+    )
 
     ### export ###
     data_run = {

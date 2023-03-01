@@ -13,6 +13,8 @@ import neuroprob as nprb
 sys.path.append("..")  # access to scripts
 import models
 
+import utils
+
 
 def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
@@ -171,7 +173,7 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
                 (np.arange(cvT) * tbin * drift + shift + sign * lat) % (2 * np.pi)
             )
             Dd = (
-                utils.latent.metric(torch.tensor(tar_t)[mask], lat_[mask], topology)
+                utils.metric(torch.tensor(tar_t)[mask], lat_[mask], topology)
                 ** 2
             )
             delay_RMS.append(Dd.mean().item())
@@ -239,6 +241,8 @@ def main():
 
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
+        
+    batch_info = args.batch_size
 
     ### names ###
     lat_config_names = [

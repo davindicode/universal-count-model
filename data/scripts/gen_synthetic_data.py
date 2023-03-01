@@ -160,15 +160,15 @@ def main():
 
     # ground truth tuning
     steps = 100
-    covariates = np.linspace(0, 2 * np.pi, steps)[:, None]
-    lamb, nu = model(covariates, sample_bin)
+    gt_covariates = np.linspace(0, 2 * np.pi, steps)[:, None]
+    lamb, nu = model(gt_covariates, sample_bin)
 
     np.savez_compressed(
         savedir + "hCMP{}".format(seed),
         spktrain=syn_train,
         hd_t=hd_t,
         tbin=sample_bin,
-        covariates=covariates,
+        gt_covariates=gt_covariates,
         gt_lamb=lamb,
         gt_nu=nu,
     )
@@ -183,11 +183,11 @@ def main():
 
     # ground truth tuning
     steps = 100
-    covariates = np.stack(
+    gt_covariates = np.stack(
         [0.0 * np.ones(steps), np.linspace(a_t.min(), a_t.max(), steps)],
         axis=1,
     )
-    gt_rate = model(covariates)
+    gt_rate = model(gt_covariates)
 
     np.savez_compressed(
         savedir + "modIP{}".format(seed),
@@ -195,7 +195,7 @@ def main():
         hd_t=hd_t,
         a_t=a_t,
         tbin=sample_bin,
-        covariates=covariates,
+        gt_covariates=gt_covariates,
         gt_rate=gt_rate,
     )
 

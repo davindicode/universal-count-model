@@ -22,7 +22,6 @@ import utils
 def latent_observed(checkpoint_dir, config_names, dataset_dict, gt_modIP, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
     ts = dataset_dict["timesamples"]
-    gt_hd = dataset_dict["covariates"]["hd"]
     gt_a = dataset_dict["covariates"]["a"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -138,7 +137,7 @@ def latent_observed(checkpoint_dir, config_names, dataset_dict, gt_modIP, seed, 
     covariates_a = sign * scale * covariates_a + shift
 
     # true tuning
-    hd = gt_modIP["covariates"][:, 0]
+    gt_hd = gt_modIP["gt_covariates"][:, 0]
 
     gt_mean = gt_modIP["gt_rate"] * tbin
     gt_FF = np.ones_like(gt_mean)
@@ -261,7 +260,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
                 sign_KS,
                 p_DS,
                 p_KS,
-            ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05, alpha_s=0.05)
+            ) = nprb.utils.stats.KS_DS_statistics(qq, alpha=0.05)
             T_DS.append(T_DS_)
             T_KS.append(T_KS_)
 

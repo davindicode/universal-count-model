@@ -10,7 +10,29 @@ import torch.nn as nn
 
 
 # histograms
-def smooth_hist(hist_values, sm_filter, bound):
+def traverse_histogram(x, input_bins, histogram_weights):
+    """
+    :param np.ndarray x: inputs of shape (ts, in_dims)
+    :param no.ndarray histogram_weights: histogram weights (out_dims, )
+    """
+    out_dims = histogram_weights.shape[0]
+    ts, in_dims = x.shape
+
+    indices = []
+    for k in range(in_dims):
+        bins = input_bins[k]
+        a = np.searchsorted(bins, x[:, k], side='right')
+        indices.append(a - 1)
+        
+
+    hist_ind = (
+        np.arange(out_dims)[:, None].repeat(ts, axis=1),
+    ) + tuple(ind[None, :].repeat(out_dims, axis=0) for ind in indices)
+
+    return histogram_weights[hist_ind]
+
+
+def smooth_histogram(hist_values, sm_filter, bound):
     r"""
     Neurons is the batch dimension, parallelize the convolution for 1D, 2D or 3D
     bound indicates the padding mode ('periodic', 'repeat', 'zeros')
@@ -143,8 +165,8 @@ def poiss_count_prob(counts, rate, sim_time):
     """
     Evaluate count data against the Poisson process count distribution.
 
-    :param np.ndarray n: count array (K,)
-    :param np.ndarray rate: rate array
+    :param np.ndarray n: count array (..., K)
+    :param np.ndarray rate: rate array (...)
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -157,9 +179,9 @@ def zip_count_prob(counts, rate, alpha, sim_time):
     """
     Evaluate count data against the Poisson process count distribution:
 
-    :param np.ndarray counts: count array (K,)
-    :param np.ndarray rate: rate array
-    :param np.ndarray alpha: zero inflation probability array
+    :param np.ndarray counts: count array (..., K)
+    :param np.ndarray rate: rate array (...)
+    :param np.ndarray alpha: zero inflation probability array (...)
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -176,9 +198,9 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
 
-    :param np.ndarray counts: count array (K,)
-    :param np.ndarray rate: rate array
-    :param np.ndarray r_inv: 1/r array
+    :param np.ndarray counts: count array (..., K)
+    :param np.ndarray rate: rate array (...)
+    :param np.ndarray r_inv: 1/r array (...)
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
@@ -213,9 +235,9 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
 
-    :param np.ndarray counts: count array (K,)
-    :param np.ndarray rate: rate array
-    :param np.ndarray nu: dispersion parameter array
+    :param np.ndarray counts: count array (..., K)
+    :param np.ndarray rate: rate array (...)
+    :param np.ndarray nu: dispersion parameter array (...)
     :param scalar sim_time: time bin size
     """
     g = (rate * sim_time)[..., None]  # (..., 1)
