@@ -1,13 +1,10 @@
 import os
 
-import sys
-
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.special as sps
 import torch
 
-sys.path.append("../..")
 from neuroprob import utils
 
 

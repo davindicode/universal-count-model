@@ -19,6 +19,7 @@ class IndNormal(_variational):
         :param torch.Tensor mu: variational mean of shape (time, (optionally) dims, (optionally) trials)
         :param torch.Tensor std: variational std of shape (time, (optionally) dims, (optionally) trials)
         :param str topo: topology type ('euclid' or 'ring')
+        :param int dims: number of input dimensions
         """
         super().__init__(tensor_type, mu.shape[0], dims)
         self.topo = topo
@@ -77,6 +78,7 @@ class Delta(_variational):
         """
         :param torch.Tensor mu: variational mean of shape (time, (optionally) dims, (optionally) trials)
         :param str topo: topology type ('euclid' or 'ring')
+        :param int dims: number of input dimensions
         """
         super().__init__(tensor_type, mu.shape[0], dims)
         self.topo = topo

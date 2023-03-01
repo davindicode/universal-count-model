@@ -27,7 +27,7 @@ python3 -m venv /path/environment
 
 . /path/environment/bin/activate
 
-python3 -m pip install -e .
+python3 -m pip install .
 ```
 
 

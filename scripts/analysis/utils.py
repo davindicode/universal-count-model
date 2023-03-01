@@ -14,7 +14,6 @@ from neuroprob import utils
 
 
 
-### stats ###
 def ind_to_pair(ind, N):
     a = ind
     k = 1
@@ -27,7 +26,6 @@ def ind_to_pair(ind, N):
     return n - 1, m
 
 
-# metrics
 def metric(x, y, topology="euclid"):
     """
     Returns the geodesic displacement between x and y, (x-y).
@@ -50,7 +48,6 @@ def metric(x, y, topology="euclid"):
     return xy
 
 
-# align latent
 def signed_scaled_shift(
     x, x_ref, dev="cpu", topology="ring", iters=1000, lr=1e-2, learn_scale=True
 ):

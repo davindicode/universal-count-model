@@ -1,14 +1,11 @@
 import os
 
-import sys
-
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.special as sps
 import torch
 from matplotlib import patches
 
-sys.path.append("../..")
 from neuroprob import utils
 
 

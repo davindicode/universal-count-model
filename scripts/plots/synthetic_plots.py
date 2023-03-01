@@ -1,19 +1,27 @@
 import os
 import pickle
 
-import sys
-
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as scstats
 
 import torch
 
-sys.path.append("../analysis")
-from utils import ind_to_pair
-
-sys.path.append("../..")
 from neuroprob import utils
+
+
+
+def ind_to_pair(ind, N):
+    a = ind
+    k = 1
+    while a >= 0:
+        a -= N - k
+        k += 1
+
+    n = k - 1
+    m = N - n + a
+    return n - 1, m
+
 
 
 def model_icons(fig):
