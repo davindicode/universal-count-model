@@ -2,7 +2,6 @@ import argparse
 import os
 
 import pickle
-import sys
 
 import numpy as np
 import torch
@@ -10,8 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.nn.parameter import Parameter
-
-sys.path.append("..")
 
 import neuroprob as nprb
 from neuroprob import kernels, utils
@@ -519,18 +516,16 @@ def latent_objects(z_mode, d_x, timesamples, tensor_type):
             d_z = int(zc[1:])
 
             if d_z == 1:
-                p = nprb.inputs.priors.tAR1(
+                p = nprb.inputs.priors.tangent_ring_AR1(
                     torch.tensor(0.0),
                     torch.tensor(4.0),
-                    "ring",
                     1,
                     tensor_type=tensor_type,
                 )
             else:
-                p = nprb.inputs.priors.tAR1(
+                p = nprb.inputs.priors.tangent_ring_AR1(
                     torch.tensor([0.0] * d_z),
                     torch.tensor([4.0] * d_z),
-                    "ring",
                     d_z,
                     tensor_type=tensor_type,
                 )

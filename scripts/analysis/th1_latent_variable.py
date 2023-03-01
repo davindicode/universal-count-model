@@ -7,7 +7,6 @@ import sys
 import numpy as np
 import torch
 
-sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
 sys.path.append("..")  # access to scripts
@@ -81,6 +80,7 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
     )
 
     ### trajectory regression to align to data and compute drifts ###
+    topology = "ring"
     splits = 3  # split trajectory into 3 parts
     kcvs = [0, 1, 2]
 
@@ -102,25 +102,24 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
 
         for kcv in kcvs:
             fit_range = np.arange(ts // splits) + kcv * ts // splits
-
+            mask = np.ones((ts,), dtype=bool)
+            mask[fit_range] = False
+            
             drift, sign, shift, _ = utils.circ_drift_regression(
                 gt_hd[fit_range],
                 latents[fit_range],
                 fit_range * tbin,
-                topology="ring",
-                dev=device,
+                topology,
+                device=device,
                 a_fac=1e-5,
             )
-
-            mask = np.ones((ts,), dtype=bool)
-            mask[fit_range] = False
 
             latent_aligned = torch.tensor(
                 (np.arange(ts) * tbin * drift + shift + sign * latents) % (2 * np.pi)
             )
             D = (
                 utils.metric(
-                    torch.tensor(gt_hd)[mask], latent_aligned[mask], topology="ring"
+                    torch.tensor(gt_hd)[mask], latent_aligned[mask], topology, 
                 )
                 ** 2
             )
@@ -150,27 +149,26 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
 
     delay_RMS = []
     for delay in delays:
-        cvT = X_loc[0].shape[0] - len(delays) + 1
-        tar_t = rhd_t[D + delay : cvT + D + delay]
-        lat = X_loc[0][D : cvT + D]
+        ts = X_loc.shape[0] - len(delays) + 1
+        tar_t = gt_hd[D + delay : ts + D + delay]
+        lat = X_loc[D : ts + D]
 
-        for rn in CV:
-            fit_range = np.arange(cvT // cvK) + rn * cvT // cvK
-
+        for kcv in kcvs:
+            fit_range = np.arange(ts // splits) + kcv * ts // splits
+            mask = np.ones((ts,), dtype=bool)
+            mask[fit_range] = False
+            
             drift, sign, shift, _ = utils.circ_drift_regression(
                 tar_t[fit_range],
                 lat[fit_range],
                 fit_range * tbin,
-                topology,
-                dev=dev,
+                topology, 
+                device,
                 a_fac=1e-5,
             )
 
-            mask = np.ones((cvT,), dtype=bool)
-            mask[fit_range] = False
-
             lat_ = torch.tensor(
-                (np.arange(cvT) * tbin * drift + shift + sign * lat) % (2 * np.pi)
+                (np.arange(ts) * tbin * drift + shift + sign * lat) % (2 * np.pi)
             )
             Dd = (
                 utils.metric(torch.tensor(tar_t)[mask], lat_[mask], topology)
@@ -186,13 +184,13 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
         X_loc[fit_range],
         fit_range * tbin,
         topology,
-        dev=dev,
+        device,
         a_fac=1e-5,
     )
 
-    latent_mu = (np.arange(rhd_t.shape[0]) * tbin * drift + shift + sign * lat) % (
+    latent_mu = (np.arange(ts) * tbin * drift + shift + sign * lat) % (
         2 * np.pi
-    )
+    )  # aligned latent to ground truth
 
     latent_dict = {
         "LVM_cv_ll": LVM_cv_ll,

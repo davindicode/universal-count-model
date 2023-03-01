@@ -10,7 +10,6 @@ import numpy as np
 import scipy.stats as scstats
 import torch
 
-#sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
 sys.path.append("..")  # access to scripts
@@ -324,6 +323,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     
     x_counts = torch.arange(max_count + 1)
 
+    omega_t = dataset_dict["covariates"]["omega"]
     x_t = dataset_dict["covariates"]["x"]
     y_t = dataset_dict["covariates"]["y"]
     left_x, right_x = x_t.min(), x_t.max()
@@ -363,29 +363,22 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     var = (x_counts[None, None, None, :] ** 2 * P_tot).sum(-1) - avg**2
     ff = var / avg
 
-    avgs = nprb.utils.stats.percentiles_from_samples(
-        avg, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
-    )
-    marg_avg_hd_percentiles = [cs_.cpu().numpy() for cs_ in avgs]
-
-    ffs = nprb.utils.stats.percentiles_from_samples(
-        ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
-    )
-    marg_FF_hd_percentiles = [cs_.cpu().numpy() for cs_ in ffs]
-
+    mhd_mean = avg.mean(0)
+    mhd_ff = ff.mean(0)
+    
     hd_avg_tf = (mhd_mean.max(dim=-1)[0] - mhd_mean.min(dim=-1)[0]) / (
         mhd_mean.max(dim=-1)[0] + mhd_mean.min(dim=-1)[0]
     )
-    hd_FF_tf = (mhd_ffmean.max(dim=-1)[0] - mhd_ffmean.min(dim=-1)[0]) / (
-        mhd_ffmean.max(dim=-1)[0] + mhd_ffmean.min(dim=-1)[0]
+    hd_FF_tf = (mhd_ff.max(dim=-1)[0] - mhd_ff.min(dim=-1)[0]) / (
+        mhd_ff.max(dim=-1)[0] + mhd_ff.min(dim=-1)[0]
     )
 
     # omega
     steps = 100
-    w_edge = (-rcov[1].min() + rcov[1].max()) / 2.0
+    w_edge = (-omega_t.min() + omega_t.max()) / 2.0
     
     with torch.no_grad():
-        P_tot = nprb.utils.model.marginalize_UMC_P_count(
+        P_tot = nprb.utils.model.marginalize_UCM_P_count(
             full_model.mapping,
             full_model.likelihood,
             [torch.linspace(-w_edge, w_edge, steps)], 
@@ -402,6 +395,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     mw_mean = avg.mean(0)
     mw_ff = ff.mean(0)
+    
     omega_avg_tf = (mw_mean.max(dim=-1)[0] - mw_mean.min(dim=-1)[0]) / (
         mw_mean.max(dim=-1)[0] + mw_mean.min(dim=-1)[0]
     )
@@ -429,6 +423,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     ms_mean = avg.mean(0)
     ms_ff = ff.mean(0)
+    
     speed_avg_tf = (ms_mean.max(dim=-1)[0] - ms_mean.min(dim=-1)[0]) / (
         ms_ff.max(dim=-1)[0] + ms_ff.min(dim=-1)[0]
     )
@@ -456,6 +451,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     mt_mean = avg.mean(0)
     mt_ff = ff.mean(0)
+    
     time_avg_tf = (mt_mean.max(dim=-1)[0] - mt_mean.min(dim=-1)[0]) / (
         mt_ff.max(dim=-1)[0] + mt_ff.min(dim=-1)[0]
     )
@@ -481,6 +477,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             full_model.likelihood, 
             [torch.from_numpy(c) for c in cov_list], 
             [3, 4], 
+            fit_dict['covariates'],
             batch_size,
             pick_neurons,
             MC=MC,
@@ -492,14 +489,13 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     mpos_mean = avg.mean(0)
     mpos_ff = ff.mean(0)
+    
     pos_avg_tf = (mpos_mean.max(dim=-1)[0] - mpos_mean.min(dim=-1)[0]) / (
         mpos_mean.max(dim=-1)[0] + mpos_mean.min(dim=-1)[0]
     )
     pos_FF_tf = (mpos_ff.max(dim=-1)[0] - mpos_ff.min(dim=-1)[0]) / (
         mpos_ff.max(dim=-1)[0] + mpos_ff.min(dim=-1)[0]
     )
-    marg_pos_mean = mpos_mean.reshape(-1, A, B)
-    marg_pos_FF = mpos_ff.reshape(-1, A, B)
 
     marginal_tunings = {
         "hd_avg_tf": hd_avg_tf,
@@ -542,15 +538,16 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         0.0 * np.ones(steps),
     ]
 
-    P_mean = (
-        nprb.utils.model.compute_UCM_P_count(
-            full_model.mapping,
-            full_model.likelihood, 
-            [torch.from_numpy(c) for c in covariates], 
-            pick_neurons, 
-            MC=MC, 
-        ).mean(0).cpu()
-    )
+    with torch.no_grad():
+        P_mean = (
+            nprb.utils.model.compute_UCM_P_count(
+                full_model.mapping,
+                full_model.likelihood, 
+                [torch.from_numpy(c) for c in covariates], 
+                pick_neurons, 
+                MC=MC, 
+            ).mean(0).cpu()
+        )
     field_hd_omega = (
         (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
     )
@@ -572,13 +569,14 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         0.0 * np.ones(steps),
     ]
 
-    P_mean = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping,
-        full_model.likelihood, 
-        [torch.from_numpy(c) for c in covariates], 
-        pick_neurons, 
-        MC=MC, 
-    ).mean(0).cpu()
+    with torch.no_grad():
+        P_mean = nprb.utils.model.compute_UCM_P_count(
+            full_model.mapping,
+            full_model.likelihood, 
+            [torch.from_numpy(c) for c in covariates], 
+            pick_neurons, 
+            MC=MC, 
+        ).mean(0).cpu()
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
     Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
@@ -589,8 +587,8 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     ATI = []
     res_var = []
     for k in range(neurons):
-        _, a, shift, losses = nprb.utils.stats.circ_lin_regression(
-            pref_hd_omega[k, :], w_arr / (2 * np.pi), dev="cpu", iters=1000, lr=1e-2
+        _, a, shift, losses = utils.circ_lin_regression(
+            pref_hd_omega[k, :], w_arr / (2 * np.pi), device="cpu", iters=1000, lr=1e-2
         )
         ATI.append(-a)
         res_var.append(losses[-1])
@@ -645,13 +643,14 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         t_arr[None, :].repeat(A, axis=0).flatten(),
     ]
 
-    P_mean = nprb.utils.compute_UCM_P_count(
-        full_model.mapping,
-        full_model.likelihood, 
-        [torch.from_numpy(c) for c in covariates], 
-        pick_neurons, 
-        MC=MC, 
-    ).mean(0).cpu()
+    with torch.no_grad():
+        P_mean = nprb.utils.compute_UCM_P_count(
+            full_model.mapping,
+            full_model.likelihood, 
+            [torch.from_numpy(c) for c in covariates], 
+            pick_neurons, 
+            MC=MC, 
+        ).mean(0).cpu()
     field = (x_counts[None, None, :] * P_mean).sum(-1).reshape(-1, A, B).numpy()
 
     Z = np.cos(covariates[0]) + np.sin(covariates[0]) * 1j  # CoM angle
@@ -673,10 +672,10 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     drift = []
     res_var_drift = []
     for k in range(len(pick_neurons)):
-        _, a, shift, losses = nprb.utils.stats.circ_lin_regression(
+        _, a, shift, losses = utils.circ_lin_regression(
             pref_hd_time[k, :],
             t_arr / (2 * np.pi) / 1e2,
-            dev="cpu",
+            device="cpu",
             iters=1000,
             lr=1e-2,
         )
@@ -747,7 +746,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     FF_omega_percentiles = []
 
     steps = 100
-    w_edge = (-rcov[1].min() + rcov[1].max()) / 2.0
+    w_edge = (-omega_t.min() + omega_t.max()) / 2.0
     eval_omega = np.linspace(-w_edge, w_edge, steps)
     for en, n in enumerate(pick_neurons):
         covariates = [

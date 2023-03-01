@@ -10,7 +10,6 @@ import numpy as np
 import scipy.stats as scstats
 import torch
 
-sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
 sys.path.append("..")  # access to scripts

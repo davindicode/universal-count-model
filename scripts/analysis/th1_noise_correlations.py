@@ -8,7 +8,6 @@ import numpy as np
 import scipy.stats as scstats
 import torch
 
-sys.path.append("../..")  # access to library
 import neuroprob as nprb
 
 sys.path.append("..")  # access to scripts
@@ -46,7 +45,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
         with torch.no_grad():
             for b in range(full_model.inputs.batches):
                 P_mc = nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping, full_model.likelihood, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
+                    full_model.mapping, full_model.likelihood, pick_neurons, None, cov_samples=10, ll_samples=1, tr=0
                 ).cpu().numpy()
 
                 avg = (x_counts[None, None, None, :] * P_mc).sum(-1)
@@ -314,7 +313,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     ]
 
     P_mc = nprb.utils.model.compute_UCM_P_count(
-        full_model.mapping, full_model.likelihood, covariates, pick_neuron, MC=MC).cpu()
+        full_model.mapping, full_model.likelihood, covariates, pick_neurons, MC=MC).cpu()
 
     avg = (x_counts[None, None, None, :] * P_mc).sum(-1).mean(0).numpy()
     pref_hd = covariates[0][np.argmax(avg, axis=1)]
@@ -332,7 +331,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         [6],
         rcovz,
         10000,
-        pick_neuron,
+        pick_neurons,
         MC=MC,
         skip=skip,
     )
@@ -356,7 +355,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
         [7],
         rcovz,
         10000,
-        pick_neuron,
+        pick_neurons,
         MC=MC,
         skip=skip,
     )
@@ -394,7 +393,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     avg_zz, FF_zz = [], []
     t = 0
-    for en, n in enumerate(pick_neuron):
+    for en, n in enumerate(pick_neurons):
         covariates = [
             pref_hd[n] * np.ones(steps),
             0.0 * np.ones(steps),
@@ -428,9 +427,9 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     bn = 40
 
     ### KS test ###
+    N = len(pick_neurons)
     Qq, Zz, R, Rp = [], [], [], []
 
-    N = len(pick_neuron)
     for en, mode in enumerate(modes):
         for kcv in kcvs:
 
@@ -457,14 +456,17 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             q_ = []
             Z_ = []
             for b in range(full_model.inputs.batches):  # predictive posterior
-                P_mc = nprb.utils.model.compute_UCM_P_count(
-                    full_model.mapping, full_model.likelihood, pick_neuron, None, cov_samples=10, ll_samples=1, tr=0
-                )
-                P = P_mc.mean(0).cpu().numpy()
+                with torch.no_grad():
+                    P = nprb.utils.model.compute_UCM_P_count(
+                        full_model.mapping, 
+                        full_model.likelihood, 
+                        pick_neurons, 
+                        MC=10, 
+                    ).mean(0).cpu().numpy()
 
                 for n in range(N):
                     spike_binned = full_model.likelihood.spikes[b][
-                        0, pick_neuron[n], :
+                        0, pick_neurons[n], :
                     ].numpy()
                     q, Z = model_utils.get_q_Z(P[n, ...], spike_binned, deq_noise=None)
                     q_.append(q)
@@ -477,8 +479,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                 Z.append(np.concatenate(Z_[n::N]))
 
             Pearson_s = []
-            for n in range(len(pick_neuron)):
-                for m in range(n + 1, len(pick_neuron)):
+            for n in range(len(pick_neurons)):
+                for m in range(n + 1, len(pick_neurons)):
                     r, r_p = scstats.pearsonr(Z[n], Z[m])  # Pearson r correlation test
                     Pearson_s.append((r, r_p))
 
@@ -508,17 +510,17 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             Z_DS = T_DS / np.sqrt(2 / (qq.shape[0] - 1))
             q_DS.append(utils.stats.Z_to_q(Z_DS))
 
-    Fisher_Z = np.array(Fisher_Z).reshape(len(CV), len(Ms), -1)
-    Fisher_q = np.array(Fisher_q).reshape(len(CV), len(Ms), -1)
+    Fisher_Z = np.array(Fisher_Z).reshape(len(modes), len(kcvs), -1)
+    Fisher_q = np.array(Fisher_q).reshape(len(modes), len(kcvs), -1)
 
-    Qq = np.array(Qq).reshape(len(CV), len(Ms), len(pick_neuron), -1)
-    Zz = np.array(Zz).reshape(len(CV), len(Ms), len(pick_neuron), -1)
-    R = np.array(R).reshape(len(CV), len(Ms), len(pick_neuron), -1)
-    Rp = np.array(Rp).reshape(len(CV), len(Ms), len(pick_neuron), -1)
+    Qq = np.array(Qq).reshape(len(modes), len(kcvs), N, -1)
+    Zz = np.array(Zz).reshape(len(modes), len(kcvs), -1)
+    R = np.array(R).reshape(len(modes), len(kcvs), N, -1)
+    Rp = np.array(Rp).reshape(len(modes), len(kcvs), N, -1)
 
-    q_DS = np.array(q_DS).reshape(len(CV), len(Ms), len(pick_neuron), -1)
-    T_DS = np.array(T_DS).reshape(len(CV), len(Ms), len(pick_neuron), -1)
-    T_KS = np.array(T_KS).reshape(len(CV), len(Ms), len(pick_neuron), -1)
+    q_DS = np.array(q_DS).reshape(len(modes), len(kcvs), N, -1)
+    T_DS = np.array(T_DS).reshape(len(modes), len(kcvs), N, -1)
+    T_KS = np.array(T_KS).reshape(len(modes), len(kcvs), N, -1)
 
     # KS test on population statistics
     T_KS_fishq = []
@@ -531,8 +533,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
             T_KS_fishq.append(T_KS)
             p_KS_fishq.append(p_KS)
 
-    T_KS_fishq = np.array(T_KS_fishq).reshape(len(CV), len(Ms))
-    p_KS_fishq = np.array(p_KS_fishq).reshape(len(CV), len(Ms))
+    T_KS_fishq = np.array(T_KS_fishq).reshape(len(modes), len(kcvs))
+    p_KS_fishq = np.array(p_KS_fishq).reshape(len(modes), len(kcvs))
 
     T_KS_ks = []
     p_KS_ks = []
@@ -545,8 +547,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                 T_KS_ks.append(T_KS)
                 p_KS_ks.append(p_KS)
 
-    T_KS_ks = np.array(T_KS_ks).reshape(len(CV), len(Ms), len(pick_neuron))
-    p_KS_ks = np.array(p_KS_ks).reshape(len(CV), len(Ms), len(pick_neuron))
+    T_KS_ks = np.array(T_KS_ks).reshape(len(modes), len(kcvs), N)
+    p_KS_ks = np.array(p_KS_ks).reshape(len(modes), len(kcvs), N)
 
     population_KS = {
         "T_KS_fishq": T_KS_fishq,
@@ -556,10 +558,9 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     }
 
     # delayed noise or spatiotemporal correlations
-    NN = len(pick_neuron)
     delays = np.arange(5)
-    R_mat_spt = np.empty((len(Ms), len(delays), NN, NN))
-    R_mat_sptp = np.empty((len(Ms), len(delays), NN, NN))
+    R_mat_spt = np.empty((len(modes), len(delays), N, N))
+    R_mat_sptp = np.empty((len(modes), len(delays), N, N))
 
     kcv_ind = 1
     for d, Z_ in enumerate(Zz[kcv_ind]):
@@ -567,8 +568,8 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
         for en, t in enumerate(delays):
             Pearson_s = []
-            for n in range(NN):
-                for m in range(NN):
+            for n in range(N):
+                for m in range(N):
                     r, r_p = scstats.pearsonr(
                         Z_[n][t : t + steps], Z_[m][: -len(delays)]
                     )  # Pearson r correlation test
