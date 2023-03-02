@@ -46,13 +46,12 @@ class Gaussian(base._likelihood):
         """
         batch_edge, _, _ = self.batch_info
         rates = self.f(h)  # watch out for underflow or overflow here
-        spikes = self.all_spikes[:, out_inds, batch_edge[b] : batch_edge[b + 1]].to(
+        obs = self.Y[:, out_inds, batch_edge[b] : batch_edge[b + 1]].to(
             self.tbin.device
         )
-        # self.spikes[b][:, out_inds, self.filter_len-1:].to(self.tbin.device)
-        return rates, spikes
+        return rates, obs
 
-    def nll(self, rates, spikes, noise_var):
+    def nll(self, rates, obs, noise_var):
         """
         Gaussian likelihood for activity train
         samples introduces a sample dimension from the left
@@ -60,7 +59,7 @@ class Gaussian(base._likelihood):
         if F_var = 0, we don't expand by samples in the sample dimension
         """
         nll = 0.5 * (
-            torch.log(noise_var) + ((spikes - rates) ** 2) / noise_var
+            torch.log(noise_var) + ((obs - rates) ** 2) / noise_var
         ) + 0.5 * torch.log(torch.tensor(2 * np.pi))
         return nll.sum(1)
 
@@ -88,7 +87,7 @@ class Gaussian(base._likelihood):
 
         if self.inv_link == "identity" and F_var is not None:  # exact
             batch_edge = self.batch_info[0]
-            spikes = self.all_spikes[:, out_inds, batch_edge[b] : batch_edge[b + 1]].to(
+            obs = self.Y[:, out_inds, batch_edge[b] : batch_edge[b + 1]].to(
                 self.tbin.device
             )
             if isinstance(F_var, numbers.Number):
@@ -99,7 +98,7 @@ class Gaussian(base._likelihood):
 
             nll = 0.5 * (
                 torch.log(noise_var)
-                + ((spikes - F_mu) ** 2) / noise_var
+                + ((obs - F_mu) ** 2) / noise_var
                 + F_var / noise_var
             ) + 0.5 * torch.log(torch.tensor(2 * np.pi))
             ws = torch.tensor(1 / F_mu.shape[0])
@@ -108,16 +107,16 @@ class Gaussian(base._likelihood):
 
         if mode == "MC":
             h = base.mc_gen(F_mu, F_var, samples, out_inds)
-            rates, spikes = self.sample_helper(h, b, out_inds, samples)
+            rates, obs = self.sample_helper(h, b, out_inds, samples)
             ws = torch.tensor(1.0 / rates.shape[0])
         elif mode == "GH":
             h, ws = base.gh_gen(F_mu, F_var, samples, out_inds)
-            rates, spikes = self.sample_helper(h, b, out_inds, samples)
+            rates, obs = self.sample_helper(h, b, out_inds, samples)
             ws = ws[:, None]
         else:
             raise NotImplementedError
 
-        return self.nll(rates, spikes, torch.exp(log_var)), ws
+        return self.nll(rates, obs, torch.exp(log_var)), ws
 
     def sample(self, rate, out_inds=None, XZ=None, rng=None):
         """

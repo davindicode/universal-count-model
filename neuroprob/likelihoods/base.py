@@ -106,7 +106,7 @@ class _likelihood(_data_object):
         self.register_buffer("tbin", torch.tensor(tbin, dtype=self.tensor_type))
         self.F_dims = F_dims
         self.out_dims = out_dims
-        self.all_spikes = None  # label as data not set
+        self.Y = None  # label as data not set
 
         if mode in _ll_modes:
             self.mode = mode
@@ -125,7 +125,7 @@ class _likelihood(_data_object):
     def set_Y(self, observations, batch_info):
         """
         Get all the activity into batches useable format for fast log-likelihood evaluation.
-        Batched spikes will be a list of tensors of shape (trials, out_dims, time) with trials
+        Batched observations will be a list of tensors of shape (trials, out_dims, time) with trials
         set to 1 if input has no trial dimension (e.g. continuous recording).
 
         :param np.ndarray observations: observations shape (out_dims, ts) or (trials, out_dims, ts)
@@ -141,7 +141,7 @@ class _likelihood(_data_object):
             observations = observations[None, ...]
 
         self.setup_batching(batch_info, observations.shape[-1], observations.shape[0])
-        self.all_spikes = observations.type(self.tensor_type)
+        self.Y = observations.type(self.tensor_type)
 
     def KL_prior(self):
         return 0

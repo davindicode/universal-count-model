@@ -33,13 +33,10 @@ class DotProduct(Kernel):
 
 class Linear(DotProduct):
     r"""
-    Implementation of Linear kernel:
-        :math:`k(x, z) = \sigma^2 x \cdot z.`
-    Doing Gaussian Process regression with linear kernel is equivalent to doing a
-    linear regression.
-    .. note:: Here we implement the homogeneous version. To use the inhomogeneous
-        version, consider using :class:`Polynomial` kernel with ``degree=1`` or making
-        a :class:`.Sum` with a :class:`.Constant` kernel.
+    Linear kernel:
+        :math:`k(x, z) = x \cdot z`
+        
+    A GP with this kernel is equivalent to Bayesian linear regression.
     """
 
     def __init__(self, input_dims, track_dims=None, f="exp", tensor_type=torch.float):
@@ -51,10 +48,11 @@ class Linear(DotProduct):
 
 class Polynomial(DotProduct):
     r"""
-    Implementation of Polynomial kernel:
-        :math:`k(x, z) = \sigma^2(\text{bias} + x \cdot z)^d.`
-    :param torch.Tensor bias: Bias parameter of this kernel. Should be positive.
-    :param int degree: Degree :math:`d` of the polynomial.
+    Polynomial kernel:
+        :math:`k(x, z) = (\text{bias} + x \cdot z)^d`
+        
+    :param torch.Tensor bias: (positive) bias parameter
+    :param int degree: gegree :math:`d` of the polynomial.
     """
 
     def __init__(
