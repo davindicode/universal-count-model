@@ -49,7 +49,7 @@ class Kernel(nn.Module):
         r"""
         Slices :math:`X` according to ``self.track_dims``.
 
-        :param torch.Tensor X: input with shape (samples, neurons, timesteps, dimensions)
+        :param torch.Tensor X: input with shape (samples, out_dims, timesteps, dimensions)
         :returns: a 2D slice of :math:`X`
         :rtype: torch.tensor
         """

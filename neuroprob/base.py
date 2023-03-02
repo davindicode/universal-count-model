@@ -59,8 +59,8 @@ class _data_object(nn.Module):
 
     def setup_batching(self, batch_info, tsteps, trials):
         """
-        :param int/list batch_info: batch size if scalar, else list of tuple (batch size, batch link), where the
-                                 batch link is a boolean indicating continuity from previous batch
+        :param int/List batch_info: batch size if scalar, else list of tuple (batch size, batch link), where the
+                                    batch link is a boolean indicating continuity from previous batch
         :param int tsteps: total time steps of data to be batched
         :param int trials: total number of trials in the spike data
         """

@@ -14,8 +14,8 @@ class Lengthscale(Kernel):
     Base class for a family of covariance kernels which are functions of the
     distance :math:`|x-z|/l`, where :math:`l` is the length-scale parameter.
 
-    :param torch.Tensor variance: variance parameter of shape (neurons)
-    :param torch.Tensor lengthscale: length-scale parameter of shape (dims, neurons)
+    :param torch.Tensor variance: variance parameter of shape (out_dims)
+    :param torch.Tensor lengthscale: length-scale parameter of shape (dims, out_dims)
     """
 
     def __init__(
@@ -68,7 +68,7 @@ class Lengthscale(Kernel):
     def _square_scaled_dist(lengthscale, X, Z):
         r"""
         Returns :math:`\|\frac{X-Z}{l}\|^2`.
-        :param torch.Tensor X: input of shape (samples, neurons, points, dims)
+        :param torch.Tensor X: input of shape (samples, out_dims, points, dims)
 
         """
         scaled_X = X / lengthscale  # K, N, T, D

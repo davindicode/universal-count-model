@@ -101,7 +101,7 @@ class VI_optimized(nn.Module):
             raise ValueError("Inputs object has not been set with data using .set_XZ()")
 
         if likelihood_set:
-            if self.likelihood.all_spikes is None:
+            if self.likelihood.Y is None:
                 raise ValueError(
                     "Likelihood object has not been set with data using .set_Y()"
                 )
@@ -122,9 +122,11 @@ class VI_optimized(nn.Module):
         self.likelihood.constrain()
 
     ### log likelihood computation ###
-    def _nll(self, mean, variance, ll_samples, ll_mode, b, neuron, XZ, sum_time=False):
+    def _nll(
+        self, mean, variance, ll_samples, ll_mode, b, out_inds, XZ, sum_time=False
+    ):
         _nll, ws = self.likelihood.objective(
-            mean, variance, XZ, b, neuron, samples=ll_samples, mode=ll_mode
+            mean, variance, XZ, b, out_inds, samples=ll_samples, mode=ll_mode
         )  # (sample, time)
         _nll = _nll.view(
             -1, self.input_group.trials, _nll.shape[-1]
@@ -146,7 +148,7 @@ class VI_optimized(nn.Module):
     def objective(
         self,
         b,
-        neuron=None,
+        out_inds=None,
         beta=1.0,
         cov_samples=1,
         ll_samples=10,
@@ -160,19 +162,15 @@ class VI_optimized(nn.Module):
         the latent variable distribution as well, hence ll_mode 'MC' leads to double MC estimation.
 
         :param int b: batch index used for picking the batch to fit
-        :param np.ndarray neuron: indices of neurons for which to evaluate the likelihood term (observed neurons)
-        :param float beta: prior annealing or KL annealing via beta
+        :param np.ndarray out_inds: indices of output dimensions for which to evaluate the likelihood term
+        :param float beta: scalar multiplier of prior/KL term
         :param int cov_samples: number of samples to draw from covariates distribution
         :param int ll_samples: number of samples to evaluate likelihood per covariate sample
-        :param string bound: type of variational objective ('ELBO', 'PLL' [1] or 'IWAE' with K=mc [2])
         :param string ll_mode: likelihood evaluation mode (Monte Carlo `MC` or Gauss-Hermite quadratures `GH`)
-        :param bool enuerate_z: use enumerate for discrete latent (marginalizing out all states)
-        :param torch.Tensor lv_input: input tensor for the latent variable computation (e.g. in the case
-                                      of amortized inference we want self.likelihood.all_spikes)
         :returns:
             variational approximation to negative marginal log likelihood
         """
-        neuron = self.likelihood._validate_neuron(neuron)
+        out_inds = self.likelihood._validate_out_inds(out_inds)
 
         ### sample input ###
         XZ, KL_prior_in = self.input_group.sample_XZ(b, cov_samples)
@@ -190,7 +188,7 @@ class VI_optimized(nn.Module):
         else:  # VI type mapping i.e. computing first and second moments
             F, F_var = self.mapping.compute_F(
                 XZ
-            )  # mean and covariance of input mapping (samples, neurons, timesteps)
+            )  # mean and covariance of input mapping (samples, out_dims, timesteps)
 
         KL_prior_m = (
             self.mapping.KL_prior()
@@ -206,7 +204,7 @@ class VI_optimized(nn.Module):
         KL_prior_l = self.likelihood.KL_prior()
 
         _nll, ws = self._nll(
-            F, F_var, ll_samples, ll_mode, b, neuron, XZ, sum_time=True
+            F, F_var, ll_samples, ll_mode, b, out_inds, XZ, sum_time=True
         )
 
         ### bounds ###
@@ -312,7 +310,7 @@ class VI_optimized(nn.Module):
         max_epochs,
         margin_epochs=10,
         loss_margin=0.0,
-        neuron=None,
+        out_inds=None,
         kl_anneal_func=None,
         retain_graph=False,
         cov_samples=1,
@@ -321,16 +319,16 @@ class VI_optimized(nn.Module):
         callback=None,
     ):
         """
-        Can fit to all neurons present in the data (default), or fits only a subset of neurons.
+        Can fit to all output dimensions present in the data (default), or fits only a subset of output dimensions.
         margin_epochs sets the early stop when the loss is still above lowest loss in given iterations.
 
         :param int max_epochs: maximum number of iterations over the dataset
         :param int margin_epochs: number of iterations above margin loss reduction to tolerate
         :param float loss_margin: tolerated loss increase during training
-        :param list neuron: neuron indices to fit to
-        :param string grad_type: gradient type used in optimization (`vanilla` or `natural` [1])
-        :returns: time series of loss during training
-        :rtype: list
+        :param List out_inds: out_inds indices to fit to
+        :param str grad_type: gradient type used in optimization (`vanilla` or `natural` [1])
+        :returns:
+            time series list of loss during training
         """
         self.validate_model()
         batches = self.likelihood.batches
@@ -362,7 +360,7 @@ class VI_optimized(nn.Module):
                     anneal_t = epoch / max_epochs
                     loss = self.objective(
                         b,
-                        neuron,
+                        out_inds,
                         beta=kl_anneal_func(anneal_t),
                         cov_samples=cov_samples,
                         ll_samples=ll_samples,

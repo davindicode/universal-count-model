@@ -6,7 +6,6 @@ import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
-sys.path.append("../..")
 import neuroprob.utils as utils
 
 
@@ -145,7 +144,7 @@ def main():
             arena = np.array([left_x, right_x, bottom_y, top_y])
 
             np.savez_compressed(
-                savedir + "/{}_{}_{}".format(mouse_id, session_id, phase),
+                savedir + "{}_{}_{}".format(mouse_id, session_id, phase),
                 spktrain=rc_t,
                 hdc_unit=hdc_unit,
                 neuron_regions=neuron_regions,

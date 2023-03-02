@@ -1,5 +1,5 @@
 import glob
-
+import argparse
 import pickle
 
 import h5py  # MATLAB files > v7.3
@@ -403,17 +403,9 @@ def main():
             print(mouse_id, session_id)
 
             channels = mice_channels[mouse_id]
-            data_class = neural_datasets.peyrache_th1(
+            neural_datasets.peyrache_th1(
                 data_dir + "/th-1/data/", mouse_id, session_id, channels
             )
-
-            periods = data_class.get_periods()
-            time_limits = [
-                periods["wake"][0]["start"],
-                periods["wake"][0]["end"],
-            ]  # pick wake session
-            savef = save_dir + "th1_{}_{}_{}.p".format(mouse_id, session_id, phase)
-            d = data_class.load_preprocess_save(None, time_limits)
 
 
 if __name__ == "__main__":

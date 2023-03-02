@@ -91,7 +91,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, batch_info, de
     return variability_dict
 
 
-def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, device):
+def noise_correlations(checkpoint_dir, config_names, dataset_dict, seed, batch_info, device):
     tbin = dataset_dict["tbin"]
     max_count = dataset_dict["max_count"]
     neurons = dataset_dict["neurons"]
@@ -122,12 +122,11 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
                 elbo.append(
                     full_model.objective(
                         b,
-                        cov_samples=1,
-                        ll_mode="GH",
-                        bound="ELBO",
                         neuron=None,
                         beta=1.0,
+                        cov_samples=1, 
                         ll_samples=100,
+                        ll_mode="GH",
                     )
                     .data.cpu()
                     .numpy()
@@ -137,19 +136,19 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
     ELBO = np.array(ELBO).reshape(len(config_names), len(kcvs))
 
     ### cross validation for dimensionality ###
+    seeds = [seed, seed + 1]
     n_group = np.arange(5)
     val_neuron = [
         n_group,
         n_group + 5,
-        n_group + 10,
-        n_group + 15,
-        n_group + 20,
-        n_group + 25,
-        np.arange(3) + 30,
+#         n_group + 10,
+#         n_group + 15,
+#         n_group + 20,
+#         n_group + 25,
+#         np.arange(3) + 30,
     ]
 
-    kcvs = [1, 2, 3, 5, 6, 8]  # validation segments from splitting data into 10
-    Ms = modes[:5]
+    kcvs = [1, 2]#, 3, 5, 6, 8]  # validation segments from splitting data into 10
 
     cv_Ell = []
     for en, name in enumerate(config_names):
@@ -181,7 +180,7 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
                             f_neuron,
                             v_neuron,
                             beta=0.0,
-                            max_iters=3000,
+                            max_iters=3,
                         )
 
                         if ll < prev_ll:
@@ -195,7 +194,7 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, batch_info, d
                         models.RG_Ell(
                             full_model,
                             val_dict,
-                            neuron_group=None,
+                            neuron_group=v_neuron, 
                             ll_mode="GH",
                             ll_samples=100,
                             cov_samples=1,
@@ -438,33 +437,22 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 
     # KS framework for latent models, including Fisher Z scores
     kcvs = [2, 5, 8]
-    bn = 40
 
     ### KS test ###
     N = len(pick_neurons)
     Qq, Zz, R, Rp = [], [], [], []
 
-    for en, mode in enumerate(modes):
+    for en, name in enumerate(config_names):
         for kcv in kcvs:
 
-            cvdata = model_utils.get_cv_sets(mode, [kcv], 3000, rc_t, resamples, rcov)[
-                0
-            ]
-            _, ftrain, fcov, vtrain, vcov, cvbatch_size = cvdata
-            cv_set = (ftrain, fcov, vtrain, vcov)
-            time_steps = ftrain.shape[-1]
+            config_name = name
 
-            full_model = get_full_model(
-                session_id,
-                phase,
-                cvdata,
-                resamples,
-                bn,
-                mode,
-                rcov,
-                max_count,
-                neurons,
-                gpu=gpu_dev,
+            full_model, training_loss, fit_dict, _ = models.load_model(
+                config_name,
+                checkpoint_dir,
+                dataset_dict,
+                batch_info,
+                device,
             )
 
             q_ = []
@@ -474,15 +462,16 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                     P = nprb.utils.model.compute_UCM_P_count(
                         full_model.mapping, 
                         full_model.likelihood, 
-                        
+                        covariates, 
                         pick_neurons, 
                         MC=MC, 
                     ).mean(0).cpu().numpy()
 
                 for n in range(N):
-                    spike_binned = full_model.likelihood.spikes[b][
+                    spike_binned = full_model.likelihood.all_spikes[
                         0, pick_neurons[n], :
                     ].numpy()
+
                     q, Z = model_utils.get_q_Z(P[n, ...], spike_binned, deq_noise=None)
                     q_.append(q)
                     Z_.append(Z)
@@ -624,11 +613,12 @@ def main():
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
+    parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--savedir", default="../output/", type=str)
     parser.add_argument("--datadir", default="../../data/", type=str)
     parser.add_argument("--checkpointdir", default="../checkpoint/", type=str)
 
-    parser.add_argument("--batch_size", default=5000, type=int)
+    parser.add_argument("--batch_size", default=500, type=int)
     
     parser.add_argument("--gpu", default=0, type=int)
     parser.add_argument("--cpu", dest="cpu", action="store_true")
@@ -660,9 +650,7 @@ def main():
         "th1_U-el-3_svgp-96_X[hd-omega-speed-x-y-time]_Z[R4]_40K11_0d0_10f",
     ]
 
-    best_name = [
-        "th1_U-el-3_svgp-80_X[hd-omega-speed-x-y-time]_Z[R2]_40K11_0d0_10f-1",
-    ]
+    best_name = "th1_U-el-3_svgp-80_X[hd-omega-speed-x-y-time]_Z[R2]_40K11_0d0_10f-1"
 
     ### load dataset ###
     data_type = "th1"
@@ -675,7 +663,7 @@ def main():
         checkpoint_dir, nc_config_names, dataset_dict, batch_info, device
     )
     noisecorr_dict = noise_correlations(
-        checkpoint_dir, nc_config_names, dataset_dict, batch_info, device
+        checkpoint_dir, nc_config_names, dataset_dict, args.seed, batch_info, device
     )
     bestmodel_dict = best_model(
         checkpoint_dir, best_name, dataset_dict, batch_info, device

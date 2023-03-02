@@ -2,11 +2,10 @@ import numpy as np
 
 import scipy.special as sps
 import scipy.stats as scstats
-from scipy import signal
 
 import torch
 import torch.nn as nn
-
+from scipy import signal
 
 
 # histograms
@@ -21,13 +20,12 @@ def traverse_histogram(x, input_bins, histogram_weights):
     indices = []
     for k in range(in_dims):
         bins = input_bins[k]
-        a = np.searchsorted(bins, x[:, k], side='right')
+        a = np.searchsorted(bins, x[:, k], side="right")
         indices.append(a - 1)
-        
 
-    hist_ind = (
-        np.arange(out_dims)[:, None].repeat(ts, axis=1),
-    ) + tuple(ind[None, :].repeat(out_dims, axis=0) for ind in indices)
+    hist_ind = (np.arange(out_dims)[:, None].repeat(ts, axis=1),) + tuple(
+        ind[None, :].repeat(out_dims, axis=0) for ind in indices
+    )
 
     return histogram_weights[hist_ind]
 
@@ -140,9 +138,7 @@ def KDE_behaviour(bins_tuple, covariates, sm_size, L, smooth_modes):
 
 
 # percentiles
-def percentiles_from_samples(
-    samples, percentiles=[0.05, 0.5, 0.95]
-):
+def percentiles_from_samples(samples, percentiles=[0.05, 0.5, 0.95]):
     """
     Compute quantile intervals from samples
 
@@ -153,7 +149,7 @@ def percentiles_from_samples(
     """
     num_samples = samples.size(0)
     samples = samples.sort(dim=0)[0]  # sort for percentiles
-    
+
     percentile_samples = [
         samples[int(num_samples * percentile)] for percentile in percentiles
     ]

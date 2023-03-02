@@ -171,16 +171,16 @@ class inducing_points(nn.Module):
             self.u_scale_tril.data[:, range(Nu), range(Nu)] = torch.clamp(
                 self.u_scale_tril.data[:, range(Nu), range(Nu)], min=self.jitter
             )
-            
+
     def proximity_cost(self):
         """
         Proximity cost for inducing point locations, to improve numerical stability
         """
         Dmat = self.Xu[..., None, :] - self.Xu[:, None, ...]  # (outs, Nu, Nu, dims)
-        
+
         dist_uu = torch.maximum(1e-2 - torch.abs(Dmat).sum(-1), torch.tensor(0.0))
-        dist_uu[:, np.arange(self.n_ind), np.arange(self.n_ind)] = 0.
-        
+        dist_uu[:, np.arange(self.n_ind), np.arange(self.n_ind)] = 0.0
+
         repulsion = dist_uu.sum()
         return 1e5 * repulsion
 
@@ -205,10 +205,10 @@ class SVGP(base._input_mapping):
         tensor_type=torch.float,
         jitter=1e-6,
         active_dims=None,
-        penalize_induc_proximity=True, 
+        penalize_induc_proximity=True,
     ):
         """
-        :param int out_dims: number of output dimensions of the GP, e.g. neurons
+        :param int out_dims: number of output dimensions of the GP, e.g. out_dims
         :param nn.Module inducing_points: initial inducing points with shape (out_dims, n_induc, input_dims)
         :param Kernel kernel: a tuple listing kernels, with content
                                      (kernel_type, topology, lengthscale, variance)
@@ -221,7 +221,7 @@ class SVGP(base._input_mapping):
         self.whiten = whiten
         self.compute_post_covar = compute_post_covar  # False if doing kernel regression
         self.penalize_induc_proximity = penalize_induc_proximity
-        
+
         ### GP mean ###
         if isinstance(mean, Number):
             if learn_mean:
@@ -268,8 +268,7 @@ class SVGP(base._input_mapping):
 
     def KL_prior(self):
         """
-        Ignores neuron, computes over all the output dimensions
-        Note self.Luu is computed in compute_F or sample_F called before
+        Note self.Luu is computed/updated in compute_F or sample_F called before
         """
         if self.induc_pts.u_scale_tril is None:  # log p(u)
             zero_loc = self.induc_pts.Xu.new_zeros(self.induc_pts.u_loc.shape)
@@ -304,10 +303,10 @@ class SVGP(base._input_mapping):
             if torch.isnan(kl).any():
                 kl = 0.0
                 print("Warning: sparse GP KL divergence is NaN, ignoring prior term.")
-        
+
         if self.penalize_induc_proximity:
             kl += self.induc_pts.proximity_cost()
-        
+
         return kl
 
     def constrain(self):

@@ -162,7 +162,7 @@ class AR1(ARNormal):
     """
     Stationary AR(1) process:
         z_{t+1} = loc * z_{t-1} + std * w_t
-        
+
     """
 
     def __init__(
@@ -173,7 +173,7 @@ class AR1(ARNormal):
         :param torch.Tensor std: variational stds of shape (ts, [dims])
         :param int dims: number of input dimensions
         """
-        
+
         class _transition(nn.Module):
             def __init__(self, loc, std, learn_loc, learn_std, tensor_type):
                 super().__init__()
@@ -215,7 +215,7 @@ class tangent_ring_AR1(ARNormal):
     """
     AR(1) process on ring (define on tangent space):
         Delta(z_t) = z_{t+1} - z_t = loc * Delta(z_{t-1}) + std * w_t
-        
+
     """
 
     def __init__(
@@ -232,7 +232,7 @@ class tangent_ring_AR1(ARNormal):
         :param torch.Tensor std: variational stds of shape (ts, [dims])
         :param int dims: number of input dimensions
         """
-        
+
         class _transition(nn.Module):
             def __init__(self, loc, std, learn_loc, learn_std, tensor_type):
                 super().__init__()

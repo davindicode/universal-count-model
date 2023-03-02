@@ -733,12 +733,12 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
     ff = xcvar / avg
     
     avg_hd_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['periodic'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['periodic'])
         for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
     ]
 
     FF_hd_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['periodic'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['periodic'])
         for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
     ]
 
@@ -767,19 +767,20 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                 MC=MC, 
             )[:, 0, ...].cpu()
 
-        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
-        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff.append(xcvar / avg)
+        xcavg = (x_counts[None, None, :] * P_mc).sum(-1)
+        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - xcavg**2
+        avg.append(xcavg)
+        ff.append(xcvar / xcavg)
         
-    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
+    avg, ff = torch.stack(avg, axis=1), torch.stack(ff, axis=1)
 
     avg_omega_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
     ]
 
     FF_omega_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
     ]
         
@@ -807,19 +808,20 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                 MC=MC, 
             )[:, 0, ...].cpu()
 
-        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
-        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff.append(xcvar / avg)
+        xcavg = (x_counts[None, None, :] * P_mc).sum(-1)
+        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - xcavg**2
+        avg.append(xcavg)
+        ff.append(xcvar / xcavg)
         
-    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
+    avg, ff = torch.stack(avg, axis=1), torch.stack(ff, axis=1)
 
     avg_speed_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
     ]
 
     FF_speed_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
     ]
 
@@ -848,19 +850,20 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                 MC=MC, 
             )[:, 0, ...].cpu()
 
-        avg.append((x_counts[None, None, :] * P_mc).sum(-1))
-        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - avg**2
-        ff.append(xcvar / avg)
+        xcavg = (x_counts[None, None, :] * P_mc).sum(-1)
+        xcvar = (x_counts[None, None, :] ** 2 * P_mc).sum(-1) - xcavg**2
+        avg.append(xcavg)
+        ff.append(xcvar / xcavg)
         
-    avg, ff = np.stack(avg, axis=1), np.stack(ff, axis=1)
+    avg, ff = torch.stack(avg, axis=1), torch.stack(ff, axis=1)
 
     avg_time_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(avg, percentiles=[0.05, 0.5, 0.95])
     ]
 
     FF_time_percentiles = [
-        nprb.utils.stats.smooth_histogram(p.cpu().numpy(), smooth_kernel, ['replicate'])
+        nprb.utils.stats.smooth_histogram(p.numpy(), smooth_kernel, ['repeat'])
         for p in nprb.utils.stats.percentiles_from_samples(ff, percentiles=[0.05, 0.5, 0.95])
     ]
 
@@ -1005,12 +1008,12 @@ def main():
     neuron_regions = dataset_dict["metainfo"]["neuron_regions"]
 
     ### analysis ###
-#     regression_dict = regression(
-#         checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, rng, batch_info, device
-#     )
-#     binning_dict = binning_variability(
-#         checkpoint_dir, binning_config_names, binnings, data_type, data_path, batch_info, device
-#     )
+    regression_dict = regression(
+        checkpoint_dir, reg_config_names, subset_config_names, dataset_dict, rng, batch_info, device
+    )
+    binning_dict = binning_variability(
+        checkpoint_dir, binning_config_names, binnings, data_type, data_path, batch_info, device
+    )
     tunings_dict = tunings(checkpoint_dir, tuning_model_name, dataset_dict, batch_info, device)
 
     ### export ###
