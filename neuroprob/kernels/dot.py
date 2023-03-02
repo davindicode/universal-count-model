@@ -35,7 +35,7 @@ class Linear(DotProduct):
     r"""
     Linear kernel:
         :math:`k(x, z) = x \cdot z`
-        
+
     A GP with this kernel is equivalent to Bayesian linear regression.
     """
 
@@ -50,7 +50,7 @@ class Polynomial(DotProduct):
     r"""
     Polynomial kernel:
         :math:`k(x, z) = (\text{bias} + x \cdot z)^d`
-        
+
     :param torch.Tensor bias: (positive) bias parameter
     :param int degree: gegree :math:`d` of the polynomial.
     """

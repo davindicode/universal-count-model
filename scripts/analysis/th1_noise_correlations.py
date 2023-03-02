@@ -122,7 +122,7 @@ def noise_correlations(checkpoint_dir, config_names, dataset_dict, seed, batch_i
                 elbo.append(
                     full_model.objective(
                         b,
-                        neuron=None,
+                        out_inds=None,
                         beta=1.0,
                         cov_samples=1, 
                         ll_samples=100,
@@ -468,7 +468,7 @@ def best_model(checkpoint_dir, model_name, dataset_dict, batch_info, device):
                     ).mean(0).cpu().numpy()
 
                 for n in range(N):
-                    spike_binned = full_model.likelihood.all_spikes[
+                    spike_binned = full_model.likelihood.Y[
                         0, pick_neurons[n], :
                     ].numpy()
 

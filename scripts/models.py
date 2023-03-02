@@ -1128,7 +1128,7 @@ def RG_Ell(
                 b,
                 cov_samples=cov_samples,
                 ll_mode=ll_mode,
-                neuron=neuron_group,
+                out_inds=neuron_group,
                 beta=beta,
                 ll_samples=ll_samples,
             ).item()
@@ -1176,7 +1176,7 @@ def LVM_Ell(
 
     losses = model.fit(
         max_iters,
-        neuron=fit_neurons,
+        out_inds=fit_neurons,
         loss_margin=-1e0,
         margin_epochs=100,
         ll_mode=ll_mode,
@@ -1190,7 +1190,7 @@ def LVM_Ell(
         Ell.append(
             -model.objective(
                 b,
-                neuron=val_neurons,
+                out_inds=val_neurons,
                 cov_samples=eval_cov_samples,
                 ll_mode=eval_ll_mode,
                 beta=beta,
