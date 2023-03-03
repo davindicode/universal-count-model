@@ -122,7 +122,7 @@ def stationary_GP_trajectories(rng, Tl, l, dt, jitter=1e-8):
 def main():
     ### parser ###
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
+        usage="%(prog)s [options]",
         description="Generate synthetic count data.",
     )
     parser.add_argument(

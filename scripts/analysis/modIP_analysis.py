@@ -302,7 +302,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
 def main():
     ### parser ###
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
+        usage="%(prog)s [options]",
         description="Analysis of modulated Poisson dataset.",
     )
     parser.add_argument(

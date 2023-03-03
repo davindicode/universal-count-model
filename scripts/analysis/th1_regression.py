@@ -938,7 +938,7 @@ def tunings(checkpoint_dir, model_name, dataset_dict, batch_info, device):
 def main():
     ### parser ###
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
+        usage="%(prog)s [options]",
         description="Analysis of th1 regression models.",
     )
     parser.add_argument(

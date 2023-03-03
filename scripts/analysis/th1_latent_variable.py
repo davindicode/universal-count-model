@@ -207,7 +207,7 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
 def main():
     ### parser ###
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
+        usage="%(prog)s [options]",
         description="Analysis of th1 regression models.",
     )
     parser.add_argument(

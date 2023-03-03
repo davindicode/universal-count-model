@@ -1,7 +1,7 @@
 After downloading the [th-1](https://crcns.org/data-sets/thalamus/th-1) dataset, selecting `Mouse28` and session `140313`, run the preprocessing script 
 
 ```
-python3 preprocess_dataset.py --datadir /scratches/sagarmatha_2/ktj21/data/crcns/ --savedir /scratches/ramanujan_2/dl543/preprocessed/th1/
+python3 preprocess_dataset.py --datadir /scratches/sagarmatha_2/ktj21/data/crcns/th-1/data/ --savedir /scratches/ramanujan_2/dl543/preprocessed/th1/ --mouse_id Mouse28 --session_id 140313
 ```
 
 
@@ -24,5 +24,5 @@ Running `gen_synthetic_data.py` overwrites the previous files.
 
 
 ```
-python3 select_th1_units.py --savedir /scratches/ramanujan_2/dl543/preprocessed/th1/ --datadir /scratches/ramanujan_2/dl543/preprocessed/th1/
+python3 select_th1_units.py --savedir ../ --datadir /scratches/ramanujan_2/dl543/preprocessed/th1/ --mouse_id Mouse28 --session_id 140313 --phase wake
 ```

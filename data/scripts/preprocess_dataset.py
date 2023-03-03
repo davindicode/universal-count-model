@@ -9,6 +9,85 @@ import scipy.io  # needed for older versions of MATLAB files
 from scipy.interpolate import Akima1DInterpolator, CubicSpline, interp1d
 
 
+# descriptions are in the .xml files in each dataset folder, including medial-lateral separation of shanks
+mice_channels = {
+    """
+    Anterior Thalamus:
+    Electrode groups: 1-8.
+    8 shank probe, Neuronexus Buz64 design. Shank #1 is the most lateral, #8 the most medial
+    Probe is perpendicular to the midline (coronal plane), tilted by 15 degrees (tips pointed toward midline)
+    , mounted on a movable drive.
+    Insertion coordinates: AP -0.7mm, ML 0.5mm
+    Approx depth from surface: 2.97mm
+
+    medial Prefrontal (Prelimbic):
+    Electrode Groups: 9-12
+    4 tetrodes
+    Insertion coordinates: AP 1.78 - 1.94mm, ML 0.5mm, depth: 1.7mm
+
+    Hippocampus:
+    Electrode group: 14.
+    5 tungsten wires (fifty micrometer in diamater), one (at least) is in the pyramidal layer of CA1 as shown
+     by the presence of Sharp-Wave/Ripples.
+    Insertion coordinates: AP -2.2mm, ML 1.3mm, depth: 1.7mm
+    """
+    "Mouse12": {
+        "ANT": [1, 2, 3, 4, 5, 6, 7, 8],
+        "mPFC": [9, 10, 11, 12, 13],
+        "CA1": [14],
+    },
+    """
+    Postsubiculum:
+    Electrode groups 1-7.
+    6 shank probe, Neuronexus Buz64sp design. Shank #1 is the most medial, #6 the most lateral, group #7 made
+     of the four sites located above 4th shank (see design).
+    Approx depth from surface: 1.28mm
+
+    Anterior thalamus:
+    Electrode groups 8-11.
+    4 shank probe, Neuronexus Buz32 design. Shank #8 is the most lateral, #11 the most medial.
+    Approx depth from surface: 2.56mm</description>
+    """
+    "Mouse28": {"PoS": [1, 2, 3, 4, 5, 6, 7], "ANT": [8, 9, 10, 11]},
+    """
+    Post-subiculum:
+    Electrode Groups: 1-4
+    4 shank probe, Neuronexus Buz32 design. Shank #1 is the most medial, #4 the most lateral
+    Probe is perpendicular to the midline (coronal plane), tilted by 10 degrees (tips pointed away from midli
+    ne), mounted on a movable drive.
+    Insertion coordinates: AP -4.25mm, ML 1.2-1.9mm
+    Approx depth from surface: 1.06mm
+
+    Anterior Thalamus:
+    Electrode groups: 5-8.
+    4 shank probe, Neuronexus Buz32 design. Shank #1 (5th electrode group) is the most lateral, #4 (8th elect
+    rode group) the most medial
+    Probe is perpendicular to the midline (coronal plane), mounted on a movable drive.
+    Insertion coordinates: AP -0.7mm, ML 0.5-1.2mm
+    Approx depth from surface: 3.11mm
+    """
+    "Mouse24": {"PoS": [1, 2, 3, 4], "ANT": [5, 6, 7, 8]},
+    """
+    Post-subiculum:
+    Electrode Groups: 1-4
+    4 shank probe, Neuronexus Buz32 design. Shank #1 is the most medial, #4 the most lateral
+    Probe is perpendicular to the midline (coronal plane), tilted by 10 degrees (tips pointed away from midli
+    ne), mounted on a movable drive.
+    Insertion coordinates: AP -4.25mm, ML 1.2-1.9mm
+    Approx depth from surface: 2.4mm
+
+    Anterior Thalamus:
+    Electrode groups: 5-8.
+    4 shank probe, Neuronexus Buz32 design. Shank #1 (5th electrode group) is the most lateral, #4 (8th elect
+    rode group) the most medial
+    Probe is perpendicular to the midline (coronal plane), mounted on a movable drive.
+    Insertion coordinates: AP -0.7mm, ML 0.5-1.2mm
+    Approx depth from surface: 2.72mm</description>
+    """
+    "Mouse25": {"PoS": [1, 2, 3, 4], "ANT": [5, 6, 7, 8]},
+}
+
+
 ### base class ###
 class _dataset:
     """
@@ -376,13 +455,16 @@ class peyrache_th1(_dataset):
 def main():
     ### parser ###
     parser = argparse.ArgumentParser(
-        usage="%(prog)s [OPTION] [FILE]...",
+        usage="%(prog)s [options]",
         description="Preprocess CRCNS th-1 datasets.",
     )
     parser.add_argument(
         "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
+    parser.add_argument("--mouse_id", type=str)
+    parser.add_argument("--session_id", type=str)
+    
     parser.add_argument("--datadir", type=str)
     parser.add_argument("--savedir", type=str)
 
@@ -392,20 +474,13 @@ def main():
     data_dir = args.datadir
 
     # properties of mouse and session selected
-    mice_channels = {
-        "Mouse28": {"PoS": [1, 2, 3, 4, 5, 6, 7], "ANT": [8, 9, 10, 11]},
-    }
-    mice_sessions = {"Mouse28": ["140313"]}
-    phase = "wake"
+    mouse_id = parser.mouse_id
+    session_id = parser.session_id
 
-    for mouse_id in mice_sessions.keys():
-        for session_id in mice_sessions[mouse_id]:
-            print(mouse_id, session_id)
-
-            channels = mice_channels[mouse_id]
-            neural_datasets.peyrache_th1(
-                data_dir + "/th-1/data/", mouse_id, session_id, channels
-            )
+    channels = mice_channels[mouse_id]
+    neural_datasets.peyrache_th1(
+        data_dir, mouse_id, session_id, channels
+    )
 
 
 if __name__ == "__main__":

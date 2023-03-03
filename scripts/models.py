@@ -36,7 +36,7 @@ def get_dataset(data_type, bin_size, path):
         sample_bin = 0.001
         track_samples = spktrain.shape[1]
 
-        tbin, resamples, rc_t, (rhd_t, rx_t, ry_t) = utils.neural.bin_data(
+        tbin, resamples, rcnts_t, (rhd_t, rx_t, ry_t) = utils.neural.bin_data(
             bin_size,
             sample_bin,
             spktrain,
@@ -82,21 +82,21 @@ def get_dataset(data_type, bin_size, path):
         elif data_type[:5] == "modIP":
             rcov = {"hd": syn_data["hd_t"], "a": syn_data["a_t"]}
 
-        rc_t = syn_data["spktrain"]
+        rcnts_t = syn_data["spktrain"]
         tbin = syn_data["tbin"].item()
 
-        units_used, resamples = rc_t.shape
+        units_used, resamples = rcnts_t.shape
 
     name = data_type
 
     # export
-    units_used = rc_t.shape[0]
-    max_count = int(rc_t.max())
+    units_used = rcnts_t.shape[0]
+    max_count = int(rcnts_t.max())
 
     dataset_dict = {
         "name": name,
         "covariates": rcov,
-        "spiketrains": rc_t,
+        "spiketrains": rcnts_t,
         "neurons": units_used,
         "metainfo": metainfo,
         "tbin": tbin,
@@ -735,11 +735,11 @@ def preprocess_data(dataset_dict, folds, delays, cv_runs, batchsize, has_latent=
     """
     Returns delay shifted cross-validated data for training
     rcov list of arrays of shape (neurons, time, 1)
-    rc_t array of shape (trials, neurons, time) or (neurons, time)
+    rcnts_t array of shape (trials, neurons, time) or (neurons, time)
 
     Data comes in as stream of data, trials are appended consecutively
     """
-    rc_t, resamples, rcov = (
+    rcnts_t, resamples, rcov = (
         dataset_dict["spiketrains"],
         dataset_dict["timesamples"],
         dataset_dict["covariates"],
@@ -771,7 +771,7 @@ def preprocess_data(dataset_dict, folds, delays, cv_runs, batchsize, has_latent=
     for delay in dd:
 
         # delays
-        rc_t_ = rc_t[..., D_min : (D_max if D_max < 0 else None)]
+        rcnts_t_ = rcnts_t[..., D_min : (D_max if D_max < 0 else None)]
         _min = D_min + delay
         _max = D_max + delay
 
@@ -781,11 +781,11 @@ def preprocess_data(dataset_dict, folds, delays, cv_runs, batchsize, has_latent=
         # get cv datasets
         if trial_sizes is not None and has_latent:  # trials and has latent
             cv_sets, cv_inds = utils.neural.spiketrials_CV(
-                folds, rc_t_, resamples_, rcov_, trial_sizes
+                folds, rcnts_t_, resamples_, rcov_, trial_sizes
             )
         else:
             cv_sets, vstart = utils.neural.spiketrain_CV(
-                folds, rc_t_, resamples_, rcov_, spk_hist_len=0
+                folds, rcnts_t_, resamples_, rcov_, spk_hist_len=0
             )
 
         for kcv in cv_runs:
@@ -820,7 +820,7 @@ def preprocess_data(dataset_dict, folds, delays, cv_runs, batchsize, has_latent=
                     vbatch_info = batchsize
 
             else:  # full data
-                ftrain, fcov = rc_t_, rcov_
+                ftrain, fcov = rcnts_t_, rcov_
                 if trial_sizes is not None and has_latent:
                     trial_ids = list(range(len(trial_sizes)))
                     fbatch_info = utils.neural.batch_segments(
@@ -1203,7 +1203,7 @@ def LVM_Ell(
 
 ### main ###
 def main():
-    parser = standard_parser("%(prog)s [OPTION] [FILE]...", "Fit model to data.")
+    parser = standard_parser("%(prog)s [options]", "Fit model to data.")
     parser.add_argument("--data_path", action="store", type=str)
     parser.add_argument("--data_type", action="store", type=str)
 
