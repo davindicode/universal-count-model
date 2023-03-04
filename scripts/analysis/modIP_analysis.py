@@ -305,9 +305,6 @@ def main():
         usage="%(prog)s [options]",
         description="Analysis of modulated Poisson dataset.",
     )
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
-    )
 
     parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--dataseed", default=1, type=int)

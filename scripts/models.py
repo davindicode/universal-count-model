@@ -213,21 +213,21 @@ def enc_used(model_dict, covariates, learn_mean, rng):
             ls = 5.0 * np.ones(out_dims)
         elif comp == "omega":
             scale = covariates["omega"].std()
-            locs = scale * rng.normal(size=(num_induc,))
+            locs = scale * np.linspace(-2., 2., num_induc)
             ls = scale * np.ones(out_dims)
         elif comp == "speed":
             scale = covariates["speed"].std()
-            locs = scale * rng.uniform(size=(num_induc,))
+            locs = scale * np.linspace(0., 1., num_induc)
             ls = 10.0 * np.ones(out_dims)
         elif comp == "x":
             left_x = covariates["x"].min()
             right_x = covariates["x"].max()
-            locs = rng.uniform(left_x, right_x, size=(num_induc,))
+            locs = np.linspace(left_x, right_x, num_induc)
             ls = (right_x - left_x) / 10.0 * np.ones(out_dims)
         elif comp == "y":
             bottom_y = covariates["y"].min()
             top_y = covariates["y"].max()
-            locs = rng.uniform(bottom_y, top_y, size=(num_induc,))
+            locs = np.linspace(bottom_y, top_y, num_induc)
             ls = (top_y - bottom_y) / 10.0 * np.ones(out_dims)
         elif comp == "time":
             scale = covariates["time"].max()
@@ -252,10 +252,15 @@ def enc_used(model_dict, covariates, learn_mean, rng):
         for xc in x_mode_comps:
             if xc == "":
                 continue
+                
+            order_arr = rng.permuted(
+                np.tile(np.arange(num_induc), out_dims).reshape(out_dims, num_induc), 
+                axis=1, 
+            )
 
             locs, ls, angular = get_inducing_locs_and_ls(xc)
 
-            ind_list += [locs]
+            ind_list += [locs[order_arr]]
             if angular:
                 ang_ls += [ls]
             else:
@@ -276,8 +281,8 @@ def enc_used(model_dict, covariates, learn_mean, rng):
         # objects
         kernelobj = create_kernel(kernel_tuples, "exp", tensor_type)
 
-        Xu = torch.tensor(np.array(ind_list)).T[None, ...].repeat(out_dims, 1, 1)
-        inpd = Xu.shape[-1]
+        # inducing points are uniformly drawn from grid of locations
+        Xu = torch.tensor(np.stack(ind_list, axis=-1))  # (out_dims, num_induc, in_dims)
         inducing_points = nprb.mappings.inducing_points(
             out_dims,
             Xu,
@@ -352,21 +357,6 @@ def create_kernel(kernel_tuples, kern_f, tensor_type):
                         lengthscale=lengthscales,
                         track_dims=act,
                         topology=topology,
-                        f=kern_f,
-                        tensor_type=tensor_type,
-                    )
-
-                elif kernel_type == "DSE":
-                    if topology != "euclid":
-                        raise ValueError("Topology must be euclid")
-                    lengthscale_beta = k_tuple[3]
-                    beta = k_tuple[4]
-                    krn = kernels.DSE(
-                        input_dims=len(lengthscales),
-                        lengthscale=lengthscales,
-                        lengthscale_beta=lengthscale_beta,
-                        beta=beta,
-                        track_dims=act,
                         f=kern_f,
                         tensor_type=tensor_type,
                     )
@@ -456,17 +446,22 @@ def latent_kernel(z_mode, num_induc, out_dims, rng):
     l_one = np.ones(out_dims)
 
     for zc in z_mode_comps:
+        order_arr = rng.permuted(
+            np.tile(np.arange(num_induc), out_dims).reshape(out_dims, num_induc), 
+            axis=1, 
+        )
+        
         if zc[:1] == "R":
             dz = int(zc[1:])
             for h in range(dz):
-                ind_list += [rng.normal(size=(num_induc,))]
+                ind_list += [np.linspace(-2., 2., num_induc)[order_arr]]
             ls = np.array([l_one] * dz)
             kernel_tuples += [("SE", "euclid", torch.tensor(ls))]
 
         elif zc[:1] == "T":
             dz = int(zc[1:])
             for h in range(dz):
-                ind_list += [np.linspace(0, 2 * np.pi, num_induc + 1)[:-1]]
+                ind_list += [np.linspace(0, 2 * np.pi, num_induc + 1)[order_arr]]
             ls = np.array([10.0 * l_one] * dz)
             kernel_tuples += [("SE", "euclid", torch.tensor(ls))]
 
@@ -687,9 +682,6 @@ def standard_parser(usage, description):
     Parser arguments belonging to training loop
     """
     parser = argparse.ArgumentParser(usage=usage, description=description)
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
-    )
     parser.add_argument("--checkpoint_dir", action="store", type=str)
 
     parser.add_argument("--tensor_type", default="float", action="store", type=str)

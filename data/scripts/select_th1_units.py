@@ -3,7 +3,6 @@ import argparse
 import pickle
 import sys
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 import neuroprob.utils as utils
@@ -89,9 +88,6 @@ def main():
     parser = argparse.ArgumentParser(
         usage="%(prog)s [options]",
         description="Preprocess CRCNS th-1 datasets.",
-    )
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
     )
 
     parser.add_argument("--mouse_id", type=str)

@@ -941,9 +941,6 @@ def main():
         usage="%(prog)s [options]",
         description="Analysis of th1 regression models.",
     )
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
-    )
 
     parser.add_argument("--seed", default=123, type=int)
     parser.add_argument("--savedir", default="../output/", type=str)

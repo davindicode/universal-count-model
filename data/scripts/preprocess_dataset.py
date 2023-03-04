@@ -1,11 +1,6 @@
-import glob
 import argparse
 import pickle
-
-import h5py  # MATLAB files > v7.3
 import numpy as np
-
-import scipy.io  # needed for older versions of MATLAB files
 from scipy.interpolate import Akima1DInterpolator, CubicSpline, interp1d
 
 
@@ -458,9 +453,6 @@ def main():
         usage="%(prog)s [options]",
         description="Preprocess CRCNS th-1 datasets.",
     )
-    parser.add_argument(
-        "-v", "--version", action="version", version=f"{parser.prog} version 1.0.0"
-    )
 
     parser.add_argument("--mouse_id", type=str)
     parser.add_argument("--session_id", type=str)
@@ -476,11 +468,16 @@ def main():
     # properties of mouse and session selected
     mouse_id = parser.mouse_id
     session_id = parser.session_id
-
     channels = mice_channels[mouse_id]
-    neural_datasets.peyrache_th1(
+    
+    data_class = peyrache_th1(
         data_dir, mouse_id, session_id, channels
     )
+    
+    periods = data_class.get_periods()
+    time_limits = [periods['wake'][0]['start'], periods['wake'][0]['end']]  # pick wake session
+    savefile = save_dir + 'th1_{}_{}_{}.p'.format(mouse_id, session_id, phase)
+    data_class.load_preprocess_save(savefile, time_limits)
 
 
 if __name__ == "__main__":
