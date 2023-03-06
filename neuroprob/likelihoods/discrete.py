@@ -682,9 +682,6 @@ class COM_Poisson(_count_model):
         :returns:
             log Z of shape (samples, out_dims, timesteps)
         """
-        # indx = torch.where((self.powers*lambd.max() - nu_.min()*self.j) < -1e1) # adaptive
-        # if len(indx) == 0:
-        #    indx = self.J+1
         log_Z_term = (
             self.powers[:, None, None, None] * log_lambda[None, ...]
             - nu[None, ...] * self.jfact[:, None, None, None]

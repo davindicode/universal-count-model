@@ -2,6 +2,16 @@ import torch
 import torch.nn as nn
 
 
+def eye_like(value, m):
+    """
+    Create an identity tensor with tensor properties of value
+    """
+    eye = torch.zeros(m, m, dtype=value.dtype, device=value.device)
+    eye.view(-1)[: m**2 : m + 1] = 1
+    return eye
+
+
+
 def _expand_cov(cov):
     if len(cov.shape) == 1:  # expand arrays from (ts,)
         cov = cov[None, None, :, None]
@@ -63,7 +73,7 @@ class _input_mapping(nn.Module):
         """
         raise NotImplementedError
 
-    def sample_F(self, XZ, samples):
+    def sample_F(self, XZ, samples, eps):
         """
         Samples from the full posterior (full covariance)
 

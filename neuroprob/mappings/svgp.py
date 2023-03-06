@@ -9,17 +9,8 @@ from torch.nn.parameter import Parameter
 from . import base
 
 
-# linear algebra computations
-def eye_like(value, m):
-    """
-    Create an identity tensor with tensor properties of value
-    """
-    eye = torch.zeros(m, m, dtype=value.dtype, device=value.device)
-    eye.view(-1)[: m**2 : m + 1] = 1
-    return eye
 
-
-def p_F_U(
+def conditional_p_F_U(
     X,
     X_u,
     kernel,
@@ -158,7 +149,7 @@ class inducing_points(nn.Module):
         if MAP:
             self.u_scale_tril = None
         else:
-            identity = eye_like(self.Xu, self.n_ind)
+            identity = base.eye_like(self.Xu, self.n_ind)
             u_scale_tril = identity.repeat(self.out_dims, 1, 1)
             self.u_scale_tril = Parameter(u_scale_tril)
 
@@ -273,7 +264,7 @@ class SVGP(base._input_mapping):
         if self.induc_pts.u_scale_tril is None:  # log p(u)
             zero_loc = self.induc_pts.Xu.new_zeros(self.induc_pts.u_loc.shape)
             if self.whiten:
-                identity = eye_like(self.induc_pts.Xu, zero_loc.shape[1])[
+                identity = base.eye_like(self.induc_pts.Xu, zero_loc.shape[1])[
                     None, ...
                 ].repeat(zero_loc.shape[0], 1, 1)
                 p = dist.MultivariateNormal(zero_loc, scale_tril=identity)
@@ -285,7 +276,7 @@ class SVGP(base._input_mapping):
         else:  # log p(u)/q(u)
             zero_loc = self.induc_pts.u_loc.new_zeros(self.induc_pts.u_loc.shape)
             if self.whiten:
-                identity = eye_like(self.induc_pts.u_loc, zero_loc.shape[1])[
+                identity = base.eye_like(self.induc_pts.u_loc, zero_loc.shape[1])[
                     None, ...
                 ].repeat(zero_loc.shape[0], 1, 1)
                 p = dist.MultivariateNormal(
@@ -322,7 +313,7 @@ class SVGP(base._input_mapping):
             mean and diagonal covariance of the posterior (samples, out_dims, ts)
         """
         XZ = self._XZ(XZ)
-        loc, var, self.Luu = p_F_U(
+        loc, var, self.Luu = _conditional_p_F_U(
             XZ,
             self.induc_pts.Xu,
             self.kernel,
@@ -346,7 +337,7 @@ class SVGP(base._input_mapping):
         """
         XZ = self._XZ(XZ)
 
-        loc, cov, self.Luu = p_F_U(
+        loc, cov, self.Luu = _conditional_p_F_U(
             XZ,
             self.induc_pts.Xu,
             self.kernel,
