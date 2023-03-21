@@ -263,7 +263,7 @@ def cmp_moments(k, rate, nu, sim_time, J=100):
     j = np.arange(J + 1)[:, None, None]
     lnum = log_g * j
     lden = sps.gammaln(j + 1) * nu
-    logsumexp_Z = sps.logsumexp(lnum - lden, axis=-1)[None, ...]
+    logsumexp_Z = sps.logsumexp(lnum - lden, axis=0)[None, ...]
     return np.exp(
         k * np.log(n) + log_g * n - logsumexp_Z - sps.gammaln(n + 1) * nu
     ).sum(0)

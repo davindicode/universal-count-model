@@ -10,10 +10,16 @@ from . import base
 
 
 # linear algebra computations
-def conditional_p_W_sites(site_locs, site_obs, site_cov):
+def conditional_p_W_sites(site_locs, site_obs, site_Lcov):
     """
     Conditional distribution of weights on site parameters
     """
+    phi  # (out_dims, w_dims, num_locs)
+    Id = base.eye_like(self.Xu, self.n_ind)
+    
+    Lphi = site_Lcov.matmul(phi.permute(0, 2, 1))
+    
+    WK = torch.matmul(Lphi, Lphi.permute(0, 2, 1)) + Id
     return
 
 
@@ -31,7 +37,7 @@ class LBFM(base._input_mapping):
         phi, 
         site_locs, 
         site_obs, 
-        site_cov, 
+        site_Lcov, 
         tensor_type=torch.float,
         active_dims=None,
     ):
@@ -45,14 +51,15 @@ class LBFM(base._input_mapping):
         """
         super().__init__(input_dim, out_dims, tensor_type, active_dims)
 
+        self.num_locs = site_locs.shape[1]
         self.register_parameter(
-            "site_locs", Parameter(site_obs, dtype=self.tensor_type)
+            "site_locs", Parameter(site_locs, dtype=self.tensor_type)
         )
         self.register_parameter(
             "site_obs", Parameter(site_obs, dtype=self.tensor_type)
         )
         self.register_parameter(
-            "site_cov", Parameter(site_cov, dtype=self.tensor_type)
+            "site_Lcov", Parameter(site_Lcov, dtype=self.tensor_type)
         )
         
         self.phi = phi  # maps (input_dims,) to (w_dims,)
@@ -62,12 +69,12 @@ class LBFM(base._input_mapping):
         
     def constrain(self):
         if (
-            self.u_scale_tril is not None
+            self.site_Lcov is not None
         ):  # constrain K to be PSD, L diagonals > 0 as needed for det K
-            self.u_scale_tril.data = torch.tril(self.u_scale_tril.data)
-            Nu = self.n_ind
-            self.u_scale_tril.data[:, range(Nu), range(Nu)] = torch.clamp(
-                self.u_scale_tril.data[:, range(Nu), range(Nu)], min=self.jitter
+            self.site_Lcov.data = torch.tril(self.site_Lcov.data)
+            Nu = self.num_locs
+            self.site_Lcov.data[:, range(Nu), range(Nu)] = torch.clamp(
+                self.site_Lcov.data[:, range(Nu), range(Nu)], min=self.jitter
             )
             
     def KL_prior(self):

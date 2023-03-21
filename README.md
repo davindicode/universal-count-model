@@ -1,8 +1,5 @@
 # A universal probabilistic spike count model reveals ongoing modulation of neural variability (NeurIPS 2021)
 
-TODO:
-- installable + remove sys.adds in code
-
 
 ## Overview
 
@@ -23,9 +20,9 @@ The baseline models, along with the Universal Count Model (UCM) proposed in our 
 #### 1. cd into lib/ and install the "neuroprob" library
 
 ```
-python3 -m venv /path/environment
+python3 -m venv /path_to_environment
 
-. /path/environment/bin/activate
+. /path_to_environment/bin/activate
 
 python3 -m pip install .
 ```
