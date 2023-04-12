@@ -10,7 +10,7 @@ from . import base
 
 
 
-def conditional_p_F_U(
+def _conditional_p_F_U(
     X,
     X_u,
     kernel,

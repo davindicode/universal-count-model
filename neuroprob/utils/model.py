@@ -83,6 +83,8 @@ def marginalize_UCM_P_count(
 ):
     """
     Marginalize over the behaviour p(X) for X not evaluated over specified by evaluation dimensions.
+    This is equivalent to regressing a model leaving out marginalized input dimensions if the input 
+    occupancy distribution p(X) factorizes between the evaluation and marginalization input subsets.
 
     :param List eval_covariates: list of tensors that specify where want to compute the marginal SCD
     :param List eval_dims: the dimensions that are not marginalized

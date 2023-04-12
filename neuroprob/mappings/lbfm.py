@@ -85,8 +85,8 @@ class LBFM(base._input_mapping):
         Default linear mapping
 
         :param torch.Tensor cov: covariates with shape (samples, ts, dims)
-        :returns: inner product with shape (samples, out_dims, ts)
-        :rtype: torch.tensor
+        :returns:
+            inner product with shape (samples, out_dims, ts)
         """
         XZ = self._XZ(XZ)  # (samples, out_dims, ts, dims)
         phixz = self.phi(XZ)  # (samples, out_dims, ts, w_dims)
@@ -106,48 +106,3 @@ class LBFM(base._input_mapping):
             eps = torch.randn(XZ.shape[:-1], dtype=self.tensor_type, device=cov.device)
 
         return loc + self.mean_function(XZ) + (L * eps[..., None, :]).sum(-1)
-
-# class GLM(base._input_mapping):
-#     """
-#     generalized linear model
-#     """
-
-#     def __init__(
-#         self,
-#         input_dim,
-#         out_dims,
-#         w_len,
-#         bias=False,
-#         tensor_type=torch.float,
-#         active_dims=None,
-#     ):
-#         """
-#         :param int input_dims: total number of active input dimensions
-#         :param int out_dims: number of output dimensions
-#         :param int w_len: number of dimensions for the weights
-#         """
-#         super().__init__(input_dim, out_dims, tensor_type, active_dims)
-
-#         self.register_parameter(
-#             "w", Parameter(torch.zeros((out_dims, w_len), dtype=self.tensor_type))
-#         )
-#         if bias:
-#             self.register_parameter(
-#                 "bias", Parameter(torch.zeros((out_dims), dtype=self.tensor_type))
-#             )
-#         else:
-#             self.bias = 0
-
-#     def compute_F(self, XZ):
-#         """
-#         Linear mapping
-
-#         :param torch.Tensor XZ: input covariates with shape (samples, ts, dims)
-#         :returns:
-#             inner product with shape (samples, out_dims, ts)
-#         """
-#         XZ = self._XZ(XZ)
-#         return (XZ * self.w[None, :, None, :]).sum(-1) + self.bias[None, :, None], 0
-
-#     def sample_F(self, XZ):
-#         return self.compute_F(XZ)[0]
