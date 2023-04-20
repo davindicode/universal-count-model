@@ -553,7 +553,7 @@ class Negative_binomial(_count_model):
 
         nll_r = fac_power + fac_lgamma
         nll_r_inv = lambd + torch.log(
-            1.0 + asymptotic_mask * r_inv * (obs**2 - obs * (3 / 2 + lambd))
+            1.0 + asymptotic_mask * r_inv * (obs**2 - obs * (1 / 2 + lambd))
         )  # Taylor expansion in 1/r
 
         nll = -n_l_rates - tfact + lfact

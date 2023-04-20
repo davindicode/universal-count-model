@@ -34,14 +34,14 @@ python3 models.py --data_type hCMP1 --checkpoint_dir ./checkpoint/ --data_path .
 ### analysis ###
 cd ./analysis/
 
-python3 hCMP_analysis.py
-python3 modIP_analysis.py
+python3 heteroscedastic_CMP.py
+python3 modulated_Poisson.py
 
 
 ### plots ###
 cd ../plots/
 
-python3 schematic_plots.py
-python3 synthetic_plots.py
+python3 schematic.py
+python3 synthetic.py
 
 exit

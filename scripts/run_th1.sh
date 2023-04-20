@@ -58,7 +58,7 @@ python3 th_latent_variable.py
 ### plots ###
 cd ../plots/
 
-python3 th1_analysis_plots.py
-python3 th1_additional_plots.py
+python3 th1.py
+python3 th1_additional.py
 
 exit
