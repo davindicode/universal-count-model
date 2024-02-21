@@ -327,7 +327,7 @@ class SVGP(base._input_mapping):
 
         return loc + self.mean_function(XZ), var
 
-    def sample_F(self, XZ, samples=1, eps=None):
+    def sample_F(self, XZ, samples=1, eps=None, RFF_num=0):
         """
         Samples from the predictive distribution (posterior over evaluation points)
 
@@ -350,8 +350,9 @@ class SVGP(base._input_mapping):
         )
         cov.view(-1, cov.shape[-1] ** 2)[:, :: cov.shape[-1] + 1] += self.jitter
 
-        L = torch.linalg.cholesky(cov.double()).type(self.tensor_type)
-
+        #L = torch.linalg.cholesky(cov.double()).type(self.tensor_type)
+        L = torch.linalg.cholesky(cov)
+        
         if samples > 1:  # expand
             XZ = XZ.repeat(samples, 1, 1, 1)
             L = L.repeat(samples)

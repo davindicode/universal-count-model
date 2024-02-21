@@ -431,9 +431,9 @@ def tunings(fig, RG_dict):
         utils.plot.decorate_ax(ax, spines=[True, True, True, True])
         rm = rate.max()
 
-    bp = 4 / 5 * (grid_shape_pos[0][1] - grid_shape_pos[0][0]) + grid_shape_pos[0][0]
-    rp = 1 / 5 * (grid_shape_pos[0][1] - grid_shape_pos[0][0]) + grid_shape_pos[0][0]
-    py = 1.1 * grid_shape_pos[1][1]
+    #bp = 4 / 5 * (grid_shape_pos[0][1] - grid_shape_pos[0][0]) + grid_shape_pos[0][0]
+    #rp = 1 / 5 * (grid_shape_pos[0][1] - grid_shape_pos[0][0]) + grid_shape_pos[0][0]
+    #py = 1.1 * grid_shape_pos[1][1]
     for k, ne in enumerate(show_neuron):
         ax = fig.add_subplot(spec[1, k])
 
@@ -441,10 +441,12 @@ def tunings(fig, RG_dict):
         rate = np.log(FF)
         g = max(-rate.min(), rate.max())
         ax.text(
-            bp, py, "{:.1f}".format(np.exp(g)), ha="center", fontsize=10, color="red"
+            0.3, 1.05, "{:.1f}".format(np.exp(g)), ha="center", fontsize=10, color="red", 
+            transform=ax.transAxes
         )
         ax.text(
-            rp, py, "{:.1f}".format(np.exp(-g)), ha="center", fontsize=10, color="blue"
+            0.7, 1.05, "{:.1f}".format(np.exp(-g)), ha="center", fontsize=10, color="blue", 
+            transform=ax.transAxes
         )
         im2 = utils.plot.visualize_field(
             (fig, ax),
@@ -1283,11 +1285,11 @@ def main():
     fig.text(0.565, -0.15, "F", transform=fig.transFigure, size=15, fontweight="bold")
     fig.text(0.87, -0.15, "G", transform=fig.transFigure, size=15, fontweight="bold")
 
-    white = "#ffffff"
-    black = "#000000"
-    red = "#ff0000"
-    blue = "#0000ff"
-    weight_map = utils.plot.make_cmap([blue, white, red], "weight_map")
+        white = "#ffffff"
+        black = "#000000"
+        red = "#ff0000"
+        blue = "#0000ff"
+        weight_map = utils.plot.make_cmap([blue, white, red], "weight_map")
 
     poscol = "forestgreen"
     antcol = "orange"

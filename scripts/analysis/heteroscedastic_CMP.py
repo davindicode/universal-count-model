@@ -58,9 +58,9 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
     gt_lamb = gt_hCMP["gt_lamb"]
     gt_nu = gt_hCMP["gt_nu"]
 
-    gt_mean = nprb.utils.stats.cmp_moments(1, gt_lamb, gt_nu, tbin, J=10000)
+    gt_mean = nprb.utils.stats.cmp_moments(1, gt_lamb, gt_nu, J=10000)
     gt_var = (
-        nprb.utils.stats.cmp_moments(2, gt_lamb, gt_nu, tbin, J=10000) - gt_mean**2
+        nprb.utils.stats.cmp_moments(2, gt_lamb, gt_nu, J=10000) - gt_mean**2
     )
     gt_FF = gt_var / (gt_mean + 1e-12)
 
@@ -93,7 +93,7 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
             ref_prob.append(
                 [
                     nprb.utils.stats.cmp_count_prob(
-                        xc, gt_lamb[n, hd_ind], gt_nu[n, hd_ind], tbin
+                        xc, gt_lamb[n, hd_ind], gt_nu[n, hd_ind]
                     )
                     for xc in x_counts.numpy()
                 ]
@@ -101,9 +101,12 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
     ref_prob = np.array(ref_prob).reshape(len(eval_hd_inds), len(pick_neurons), -1)
 
     cs = nprb.utils.stats.percentiles_from_samples(
-        P_mc[..., eval_hd_inds, :], percentiles=[0.05, 0.5, 0.95], smooth_length=1
+        P_mc[..., eval_hd_inds, :], percentiles=[0.05, 0.5, 0.95]
     )
-    cnt_percentiles = [cs_.cpu().numpy() for cs_ in cs]
+    cnt_percentiles = [
+        utils.smooth_percentiles(cs_.cpu().numpy().reshape(-1, P_mc.shape[-1]), smooth_length=1).reshape(
+            *cs_.shape[:2], -1) for cs_ in cs
+    ]
 
     # tuning curves
     avg = (x_counts[None, None, None, :] * P_mc.cpu()).sum(-1)
@@ -111,14 +114,18 @@ def regression(checkpoint_dir, config_names, dataset_dict, gt_hCMP, batch_info, 
     ff = xcvar / avg
 
     avgs = nprb.utils.stats.percentiles_from_samples(
-        avg, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
+        avg, percentiles=[0.05, 0.5, 0.95]
     )
-    avg_percentiles = [cs_.cpu().numpy() for cs_ in avgs]
+    avg_percentiles = [
+        utils.smooth_percentiles(cs_.cpu().numpy(), smooth_length=5, padding_mode="periodic") for cs_ in avgs
+    ]
 
     ffs = nprb.utils.stats.percentiles_from_samples(
-        ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
+        ff, percentiles=[0.05, 0.5, 0.95]
     )
-    FF_percentiles = [cs_.cpu().numpy() for cs_ in ffs]
+    FF_percentiles = [
+        utils.smooth_percentiles(cs_.cpu().numpy(), smooth_length=5, padding_mode="periodic") for cs_ in ffs
+    ]
 
     regression_dict = {
         "RG_cv_ll": RG_cv_ll,
@@ -178,7 +185,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
 
                         P.append(
                             nprb.utils.stats.poiss_count_prob(
-                                np.arange(max_count + 1), rate, tbin
+                                np.arange(max_count + 1), rate*tbin
                             )
                         )
 
@@ -203,7 +210,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
 
                         P.append(
                             nprb.utils.stats.nb_count_prob(
-                                np.arange(max_count + 1), rate, r_inv, tbin
+                                np.arange(max_count + 1), rate*tbin, r_inv
                             )
                         )
 
@@ -224,7 +231,7 @@ def variability_stats(checkpoint_dir, config_names, dataset_dict, rng, batch_inf
             q_ = []
             Z_ = []
             for n in range(len(pick_neurons)):
-                spike_binned = full_model.likelihood.all_spikes[
+                spike_binned = full_model.likelihood.Y[
                     0, pick_neurons[n], :
                 ].numpy()
                 q = nprb.utils.stats.counts_to_quantiles(P[n, ...], spike_binned, rng)
@@ -416,14 +423,18 @@ def latent_variable(checkpoint_dir, config_names, dataset_dict, seed, batch_info
         ff = xcvar / (avg + 1e-12)
 
         avgs = nprb.utils.stats.percentiles_from_samples(
-            avg, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
+            avg, percentiles=[0.05, 0.5, 0.95]
         )
-        comp_avg.append([cs_.cpu().numpy() for cs_ in avgs])
+        comp_avg.append([
+            utils.smooth_percentiles(cs_.cpu().numpy(), smooth_length=5, padding_mode="periodic") for cs_ in avgs
+        ])
 
         ffs = nprb.utils.stats.percentiles_from_samples(
-            ff, percentiles=[0.05, 0.5, 0.95], smooth_length=5, padding_mode="circular"
+            ff, percentiles=[0.05, 0.5, 0.95]
         )
-        comp_FF.append([cs_.cpu().numpy() for cs_ in ffs])
+        comp_FF.append([
+            utils.smooth_percentiles(cs_.cpu().numpy(), smooth_length=5, padding_mode="periodic") for cs_ in ffs
+        ])
 
     latent_dict = {
         "LVM_cv_ll": LVM_cv_ll,

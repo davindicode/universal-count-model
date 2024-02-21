@@ -16,6 +16,10 @@ The baseline models, along with the Universal Count Model (UCM) proposed in our 
 
 ## Reproducing results
 
+Note the following updates since the paper which lead to slightly different results:
+- Deterministic model fitting and analysis results given a random seed
+- Determinisitc synthetic data generation given a random seed
+
 
 #### 1. cd into lib/ and install the "neuroprob" library
 

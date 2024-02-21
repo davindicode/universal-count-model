@@ -157,30 +157,28 @@ def percentiles_from_samples(samples, percentiles=[0.05, 0.5, 0.95]):
 
 
 # count distributions
-def poiss_count_prob(counts, rate, sim_time):
+def poiss_count_prob(counts, lambd):
     """
     Evaluate count data against the Poisson process count distribution.
 
     :param np.ndarray n: count array (..., K)
     :param np.ndarray rate: rate array (...)
-    :param scalar sim_time: time bin size
     """
-    g = (rate * sim_time)[..., None]  # (..., 1)
+    g = lambd[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
 
     return np.exp(counts * log_g - g - sps.gammaln(counts + 1))
 
 
-def zip_count_prob(counts, rate, alpha, sim_time):
+def zip_count_prob(counts, lambd, alpha):
     """
     Evaluate count data against the Poisson process count distribution:
 
     :param np.ndarray counts: count array (..., K)
     :param np.ndarray rate: rate array (...)
     :param np.ndarray alpha: zero inflation probability array (...)
-    :param scalar sim_time: time bin size
     """
-    g = (rate * sim_time)[..., None]  # (..., 1)
+    g = lambd[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
     alpha = alpha[..., None]
 
@@ -189,7 +187,7 @@ def zip_count_prob(counts, rate, alpha, sim_time):
     return zero_mask * (alpha + p_) + (1.0 - zero_mask) * p_
 
 
-def nb_count_prob(counts, rate, r_inv, sim_time):
+def nb_count_prob(counts, lambd, r_inv):
     """
     Negative binomial count probability. The mean is given by :math:`r \cdot \Delta t` like in
     the Poisson case.
@@ -197,9 +195,8 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     :param np.ndarray counts: count array (..., K)
     :param np.ndarray rate: rate array (...)
     :param np.ndarray r_inv: 1/r array (...)
-    :param scalar sim_time: time bin size
     """
-    g = (rate * sim_time)[..., None]  # (..., 1)
+    g = lambd[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
     r_inv = r_inv[..., None]
 
@@ -226,7 +223,7 @@ def nb_count_prob(counts, rate, r_inv, sim_time):
     return np.exp(ll)
 
 
-def cmp_count_prob(counts, rate, nu, sim_time, J=100):
+def cmp_count_prob(counts, lambd, nu, J=100):
     """
     Conway-Maxwell-Poisson count distribution. The partition function is evaluated using logsumexp
     inspired methodology to avoid floating point overflows.
@@ -236,7 +233,7 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     :param np.ndarray nu: dispersion parameter array (...)
     :param scalar sim_time: time bin size
     """
-    g = (rate * sim_time)[..., None]  # (..., 1)
+    g = lambd[..., None]  # (..., 1)
     log_g = np.log(np.maximum(g, 1e-12))
     nu = nu[..., None]
 
@@ -249,12 +246,12 @@ def cmp_count_prob(counts, rate, nu, sim_time, J=100):
     )  # (..., K)
 
 
-def cmp_moments(k, rate, nu, sim_time, J=100):
+def cmp_moments(k, lambd, nu, J=100):
     """
     :param np.ndarray k: order of moment to compute
     :param np.ndarray rate: input rate of shape (neurons, timesteps)
     """
-    g = rate[None, ...] * sim_time
+    g = lambd[None, ...]
     log_g = np.log(np.maximum(g, 1e-12))
     nu = nu[None, ...]
     k = np.array([k])[:, None, None]  # turn into array

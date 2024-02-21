@@ -11,6 +11,14 @@ from neuroprob import utils
 
 
 
+def smooth_percentiles(perc, smooth_length, padding_mode='repeat'):
+    """
+    smooth the samples
+    """
+    sw = np.ones(smooth_length) / smooth_length
+    return utils.stats.smooth_histogram(perc, sw, [padding_mode])
+
+
 def ind_to_pair(ind, N):
     a = ind
     k = 1

@@ -1091,8 +1091,8 @@ def main():
     LVM_scores(fig, latent_dict_hCMP)
 
     ### noise correlations ###
-    noise_correlations(fig, variability_modIP)
-    latent_observed_tuning(fig, latent_observed_modIP)
+#     noise_correlations(fig, variability_modIP)
+#     latent_observed_tuning(fig, latent_observed_modIP)
 
     plt.savefig(save_dir + "plot_synthetic.pdf")
 

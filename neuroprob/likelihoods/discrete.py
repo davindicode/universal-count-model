@@ -27,7 +27,7 @@ def gen_NB(rng, lamb, r):
     r = np.minimum(r, 1e12)
     s = rng.gamma(
         r, lamb / r
-    )  # becomes delta around rate*tbin when r to infinity, cap at 1e12
+    )  # becomes delta around lambda when r to infinity, cap at 1e12
     return rng.poisson(s)
 
 
@@ -41,7 +41,6 @@ def gen_CMP(rng, lamb, nu, max_rejections=1000):
          Sampling: The Conway-Maxwell-Poisson Distribution`, Alan Benson, Nial Friel (2021)
 
     :param numpy.array rate: input rate of shape (..., time)
-    :param float tbin: time bin size
     :param float eps: order of magnitude of P(N>1)/P(N<2) per dilated Bernoulli bin
     :param int max_count: maximum number of spike counts per bin possible
     :returns:
